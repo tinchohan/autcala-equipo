@@ -1,0 +1,11 @@
+# Lo que es de cada equipo y no entra al repositorio.
+.env
+datos/
+almacen/
+clips/
+frigate/config.yml
+frigate/config.yml.bak*
+frigate/model_cache/
+frigate/*.db*
+puente/_prueba.db
+__pycache__/

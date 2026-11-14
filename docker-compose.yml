@@ -1,0 +1,46 @@
+# El equipo del local: Frigate mira las cámaras, el puente cuenta y
+# manda. Ver README.md. Se levanta con:  docker compose up -d
+services:
+  # El correo interno por donde Frigate le avisa al puente. No se abre a la red.
+  mosquitto:
+    image: eclipse-mosquitto:2
+    restart: unless-stopped
+    volumes:
+      - ./mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+
+  frigate:
+    container_name: frigate
+    image: ghcr.io/blakeblackshear/frigate:stable
+    privileged: true
+    restart: unless-stopped
+    stop_grace_period: 30s
+    shm_size: "512mb"
+    depends_on:
+      - mosquitto
+    env_file: .env
+    devices:
+      - /dev/hailo0
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - ./frigate:/config
+      - ./clips:/media/pruebas:ro
+      - ./almacen:/media/frigate
+      - type: tmpfs
+        target: /tmp/cache
+        tmpfs:
+          size: 1000000000
+    ports:
+      # La pantalla de Frigate, con usuario y clave: https://IP-DE-LA-PI:8971
+      - "8971:8971"
+
+  puente:
+    build: ./puente
+    restart: unless-stopped
+    depends_on:
+      - mosquitto
+    env_file: .env
+    environment:
+      MQTT_HOST: mosquitto
+      DISCO: /datos/puente.db
+    volumes:
+      - ./datos:/datos

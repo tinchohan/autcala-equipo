@@ -1,0 +1,176 @@
+# La plantilla de la configuración de Frigate. Ver ../README.md.
+#
+# El instalador la copia a config.yml la primera vez. De ahí en más manda
+# config.yml, que es de cada equipo y no entra al repositorio: Frigate
+# guarda ahí las zonas que se corrigen en su pantalla.
+#
+# Frigate mira las cámaras con el Hailo y avisa por MQTT qué persona está en
+# qué zona. NO graba ni saca fotos: el grabador del local ya graba, y de este
+# equipo no sale ninguna imagen. El puente (../puente) escucha esos avisos.
+#
+# LAS ZONAS de abajo salieron de un clip de la cámara 1 de un local (el
+# mostrador visto desde la punta donde se empieza a pedir). Son un primer
+# dibujo: se corrigen arrastrando los puntos en la pantalla de Frigate
+# (Ajustes → Zonas y máscaras). Los nombres puerta, salon, fila y caja son
+# los que espera el puente: no cambiarlos.
+
+mqtt:
+  enabled: true
+  host: mosquitto
+
+detectors:
+  hailo:
+    type: hailo8l        # sirve para el Hailo-8 y el Hailo-8L: Frigate se da cuenta solo
+    device: PCIe
+
+# El modelo que Frigate baja solo la primera vez (YOLOv6n, del Model Zoo de
+# Hailo). Tiene su propia licencia: revisarla antes de un uso comercial.
+model:
+  width: 320
+  height: 320
+  input_tensor: nhwc
+  input_pixel_format: rgb
+  input_dtype: int
+  model_type: yolo-generic
+  labelmap_path: /labelmap/coco-80.txt
+
+objects:
+  track:
+    - person
+
+record:
+  enabled: false
+snapshots:
+  enabled: false
+audio:
+  enabled: false
+
+detect:
+  enabled: true
+  width: 1280
+  height: 720
+  fps: 5
+
+cameras:
+  # La cámara 1: el mostrador. El nombre termina en el número del canal del
+  # grabador; el puente lo usa para decir de qué cámara es un aviso.
+  camara1:
+    ffmpeg:
+      # Para probar: un clip que se repite, como si fuera la cámara
+      # (../clips/camara1.mp4). Con el clip los números no significan nada (la
+      # misma gente entra una y otra vez): sirve para ver que Frigate detecta
+      # y para acomodar las zonas. `./instalar.sh --configurar` cambia estas
+      # entradas por las del grabador del local.
+      hwaccel_args: ""
+      inputs:
+        - path: /media/pruebas/camara1.mp4
+          input_args: -re -stream_loop -1 -fflags +genpts
+          roles:
+            - detect
+    objects:
+      filters:
+        person:
+          mask:
+            # La calle: lo que se ve por la puerta y por los vidrios. Una
+            # persona cuyos pies caen acá no se cuenta.
+            calle_arriba:
+              friendly_name: "La calle, por la puerta y el vidrio del fondo"
+              enabled: true
+              coordinates: "0.449,0.000,1.000,0.000,1.000,0.335,0.449,0.335"
+            calle_derecha:
+              friendly_name: "La vereda, por el vidrio de la derecha"
+              enabled: true
+              coordinates: "0.845,0.335,1.000,0.335,1.000,0.620,0.845,0.560"
+    zones:
+      puerta:
+        friendly_name: "La puerta"
+        coordinates: 0.457,0.347,0.594,0.347,0.617,0.479,0.457,0.479
+        inertia: 2
+        objects:
+          - person
+      caja:
+        friendly_name: "La caja"
+        coordinates: 0.434,0.611,0.547,0.611,0.563,0.868,0.430,0.868
+        objects:
+          - person
+      fila:
+        friendly_name: "Donde se empieza a pedir"
+        coordinates: 0.430,0.868,0.563,0.868,0.594,1.000,0.426,1.000
+        objects:
+          - person
+      salon:
+        friendly_name: "El salón"
+        coordinates: 0.457,0.479,0.617,0.479,0.617,0.347,0.845,0.347,0.845,0.560,1.000,0.620,1.000,1.000,0.594,1.000,0.563,0.868,0.547,0.611,0.434,0.611
+        objects:
+          - person
+
+  # La cámara 2: desde atrás de la caja, mirando a la puerta. Ve la pantalla
+  # de la caja, los posnet, la puerta de frente y las mesas.
+  #
+  # VA SIN ZONAS A PROPÓSITO. Las entradas, la fila y la caja las cuenta la
+  # cámara 1: si las dos tuvieran zonas del cliente, la misma persona se
+  # contaría dos veces. Esta sirve para avisar si se ve a alguien con el
+  # local cerrado y, más adelante, para la foto de un aviso. (Si en la
+  # práctica la puerta se ve mejor desde acá, se le dibuja `puerta` y `salon`
+  # a esta y se le saca `puerta` a la cámara 1.)
+  camara2:
+    ffmpeg:
+      # Si falta el clip, Frigate muestra esta cámara caída y las otras siguen.
+      hwaccel_args: ""
+      inputs:
+        - path: /media/pruebas/camara2.mp4
+          input_args: -re -stream_loop -1 -fflags +genpts
+          roles:
+            - detect
+    objects:
+      filters:
+        person:
+          mask:
+            # La vereda, por la puerta y los vidrios. De noche pasa gente y,
+            # sin esta máscara, cada uno sería un aviso de «fuera de
+            # horario». Dibujada sobre un clip de noche con reflejos:
+            # revisarla con cuidado en la pantalla de Frigate.
+            calle:
+              friendly_name: "La vereda, por la puerta y los vidrios"
+              enabled: true
+              coordinates: "0.090,0.000,1.000,0.000,1.000,0.400,0.500,0.400,0.500,0.280,0.090,0.280"
+
+  # La cámara 3: el salón visto desde el fondo, hacia la puerta. Más de la
+  # mitad de la imagen es la vereda y la calle, con gente que pasa pegada al
+  # vidrio. SIN ZONAS (las cuentas son de la cámara 1) y con casi todo
+  # tapado: sólo queda el piso de adentro. Sirve para lo de fuera de horario.
+  camara3:
+    ffmpeg:
+      hwaccel_args: ""
+      inputs:
+        - path: /media/pruebas/camara3.mp4
+          input_args: -re -stream_loop -1 -fflags +genpts
+          roles:
+            - detect
+    objects:
+      filters:
+        person:
+          mask:
+            # Todo lo que es vidrio. La gente de la vereda apoya los pies
+            # muy abajo en la imagen: por eso la máscara baja tanto del lado
+            # izquierdo. Revisarla mirando pasar gente por afuera.
+            calle:
+              friendly_name: "La vereda y la calle, por los vidrios"
+              enabled: true
+              coordinates: "0.000,0.000,1.000,0.000,1.000,0.600,0.680,0.600,0.620,0.700,0.570,0.880,0.360,0.880,0.360,1.000,0.000,1.000"
+
+  # La cámara 4: la cocina. Sólo gente del local. SIN ZONAS: sirve para lo de
+  # fuera de horario.
+  camara4:
+    ffmpeg:
+      hwaccel_args: ""
+      inputs:
+        - path: /media/pruebas/camara4.mp4
+          input_args: -re -stream_loop -1 -fflags +genpts
+          roles:
+            - detect
+
+  # OJO CON LOS NÚMEROS. El instalador le pone a camara1 el canal 1 del
+  # grabador (la dirección que termina en 102), a camara2 el 2 (202), y así.
+  # Si en el grabador el orden es otro, hay que mirar qué muestra cada canal
+  # y cambiar el número en la dirección de la cámara que corresponde.
