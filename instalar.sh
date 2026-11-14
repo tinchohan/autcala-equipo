@@ -4,6 +4,7 @@
 #
 #     ./instalar.sh                 instala Docker si falta, prepara todo y lo levanta
 #     ./instalar.sh --configurar    pregunta el link de la caja, el PIN, el horario y el grabador
+#     ./instalar.sh --camara        usa una cámara sola por su dirección RTSP (una Tapo, etc.)
 #     ./instalar.sh --controlador   instala el controlador del Hailo que pide Frigate
 #     ./instalar.sh --remoto        pone este equipo en Tailscale, para entrarle desde otro lado
 #     ./instalar.sh --estado        sólo dice cómo está cada cosa
@@ -32,15 +33,17 @@ corta() { printf '\n%s\n' "$*" >&2; exit 1; }
 
 CONTROLADOR=no
 CONFIGURAR=no
+CAMARA=no
 REMOTO=no
 SOLO_ESTADO=no
 for arg in "$@"; do
   case "$arg" in
     --controlador) CONTROLADOR=si ;;
     --configurar) CONFIGURAR=si ;;
+    --camara) CAMARA=si ;;
     --remoto) REMOTO=si ;;
     --estado) SOLO_ESTADO=si ;;
-    -h|--help) sed -n '2,21p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h|--help) sed -n '2,22p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) corta "No conozco la opción $arg. Probá ./instalar.sh --help" ;;
   esac
 done
@@ -108,6 +111,8 @@ estado() {
     local hay=0 n
     for n in 1 2 3 4; do [ -f "clips/camara$n.mp4" ] && hay=$((hay + 1)); done
     if [ "$hay" -gt 0 ]; then bien "Frigate lee clips de prueba ($hay de 4 en clips/)"; else falta "los clips de prueba (clips/camara1.mp4 … camara4.mp4)"; fi
+  elif [ -f frigate/config.yml ] && grep -q '{FRIGATE_CAMARA_IP}' frigate/config.yml; then
+    bien "Frigate lee la cámara $(actual FRIGATE_CAMARA_IP)"
   elif [ -f frigate/config.yml ]; then
     bien "Frigate lee las cámaras del grabador $(actual FRIGATE_NVR_IP)"
   fi
@@ -198,6 +203,44 @@ configurar() {
   esac
   chmod 600 .env
   bien "guardado"
+}
+
+camara() {
+  dice "Una cámara sola, por su dirección RTSP"
+  echo "Para una cámara con RTSP (una Tapo, una cámara IP suelta) en la misma"
+  echo "red que la Pi, en vez del grabador. Hacen falta su IP, usuario, clave y"
+  echo "la ruta del video (en una Tapo: /stream1 el alta, /stream2 el liviano)."
+  local ip puerto usuario clave ruta
+  read -r -p "IP de la cámara [$(actual FRIGATE_CAMARA_IP)]: " ip
+  if [ -n "$ip" ]; then
+    [[ "$ip" =~ ^[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?$ ]] || corta "«$ip» no es una IP ni un nombre. Va como 192.168.1.61."
+    poner FRIGATE_CAMARA_IP "$ip"
+  fi
+  [ -n "$(actual FRIGATE_CAMARA_IP)" ] || corta "Sin la IP de la cámara no puedo seguir."
+  read -r -p "Puerto del video (RTSP) [$([ -n "$(actual FRIGATE_CAMARA_PUERTO)" ] && actual FRIGATE_CAMARA_PUERTO || echo 554)]: " puerto
+  if [ -n "$puerto" ]; then
+    [[ "$puerto" =~ ^[0-9]{1,5}$ ]] && [ "$puerto" -ge 1 ] && [ "$puerto" -le 65535 ] || corta "«$puerto» no es un puerto. El de siempre es 554."
+    poner FRIGATE_CAMARA_PUERTO "$puerto"
+  fi
+  [ -n "$(actual FRIGATE_CAMARA_PUERTO)" ] || poner FRIGATE_CAMARA_PUERTO 554
+  read -r -p "Usuario de la cámara [$(actual FRIGATE_RTSP_USER)]: " usuario
+  [ -z "$usuario" ] || poner FRIGATE_RTSP_USER "$(codificar "$usuario")"
+  read -r -s -p "Clave de la cámara (no se ve al escribirla)$([ -n "$(actual FRIGATE_RTSP_PASSWORD)" ] && echo ' [la que estaba]'): " clave
+  echo
+  [ -z "$clave" ] || poner FRIGATE_RTSP_PASSWORD "$(codificar "$clave")"
+  read -r -p "Ruta del video [$([ -n "$(actual FRIGATE_CAMARA_RUTA)" ] && actual FRIGATE_CAMARA_RUTA || echo /stream1)]: " ruta
+  if [ -n "$ruta" ]; then
+    [ "${ruta#/}" = "$ruta" ] && ruta="/$ruta"
+    poner FRIGATE_CAMARA_RUTA "$ruta"
+  fi
+  [ -n "$(actual FRIGATE_CAMARA_RUTA)" ] || poner FRIGATE_CAMARA_RUTA /stream1
+  if [ -f frigate/config.yml ] && ! grep -q '{FRIGATE_CAMARA_IP}' frigate/config.yml; then
+    cp frigate/config.yml "frigate/config.yml.bak-$(date +%Y%m%d-%H%M%S)"
+  fi
+  cp frigate/config.una-camara.ejemplo.yml frigate/config.yml
+  REINICIAR_FRIGATE=si
+  chmod 600 .env
+  bien "Frigate lee la cámara $(actual FRIGATE_CAMARA_IP). Las zonas se corrigen en su pantalla."
 }
 
 if [ "$SOLO_ESTADO" = si ]; then estado; exit 0; fi
@@ -298,6 +341,7 @@ fi
 
 REINICIAR_FRIGATE=no
 if [ "$CONFIGURAR" = si ]; then configurar; fi
+if [ "$CAMARA" = si ]; then camara; fi
 
 if [ ! -e /dev/hailo0 ]; then
   estado
@@ -329,6 +373,8 @@ cat <<FIN
        ./instalar.sh --controlador
   Para ponerle un local a este equipo (el link de la caja y el PIN):
        ./instalar.sh --configurar
+  Para usar una cámara sola por su dirección (una Tapo, etc.):
+       ./instalar.sh --camara
   Para actualizar más adelante:
        git pull && ./instalar.sh
 FIN

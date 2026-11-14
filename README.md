@@ -142,6 +142,24 @@ En el local alcanza con enchufar el equipo a la corriente y al router: al
 prender arranca solo, sin monitor. Para corregir zonas más adelante hay que
 entrar a la pantalla de Frigate desde una computadora de esa misma red.
 
+## Una cámara sola por su dirección (una Tapo, etc.)
+
+Si en vez de un grabador tenés una cámara con RTSP conectada a la misma red
+que la Pi (una TP-Link Tapo, una cámara IP suelta):
+
+```
+./instalar.sh --camara
+```
+
+Pregunta la IP de la cámara, el puerto del video (554), el usuario y la clave
+(en una Tapo, los de la «Cuenta de cámara», no los de la nube) y la ruta del
+stream (en una Tapo, `/stream1` es la imagen en alta y `/stream2` la liviana).
+Deja Frigate leyendo esa cámara, con cuatro zonas de prueba que se corrigen en
+su pantalla.
+
+Antes conviene confirmar la cámara en VLC:
+`rtsp://usuario:clave@IP:554/stream1`
+
 ## Entrar al equipo sin ir al local
 
 ```

@@ -323,6 +323,12 @@ ok("\r" not in INSTALAR and INSTALAR.startswith("#!/usr/bin/env bash\n") and "se
    and "rm -rf" not in INSTALAR and "if [ ! -f .env ]; then" in INSTALAR
    and "if [ ! -f frigate/config.yml ]; then" in INSTALAR,
    "el instalador no cambia el controlador del Hailo ni instala Tailscale si no se lo piden, no borra nada y no pisa el .env ni las zonas")
+UNA = leer("frigate/config.una-camara.ejemplo.yml")
+ok("  camara1:" in UNA and "camara2" not in UNA and "{FRIGATE_CAMARA_IP}" in UNA and "{FRIGATE_CAMARA_RUTA}" in UNA
+   and "enabled: false" in UNA.split("record:")[1][:80] and "enabled: false" in UNA.split("snapshots:")[1][:80]
+   and all(f"{z}:" in UNA for z in (puente.PUERTA, puente.SALON, puente.FILA, puente.CAJA))
+   and "--camara) CAMARA=si" in INSTALAR and "cp frigate/config.una-camara.ejemplo.yml frigate/config.yml" in INSTALAR,
+   "hay una plantilla para una cámara sola por su URL (una Tapo), con su dirección en el .env, y el instalador la pone con --camara")
 PUBLICO = "".join(leer(x) for x in ("README.md", "puente/puente.py", "frigate/config.ejemplo.yml", ".env.example",
                                     "docker-compose.yml")) + INSTALAR
 ok(not re.search(r"docs/ojo|\.\./docs|juramento|subway|\bH4\b|mart[ií]n|@gmail", PUBLICO, re.I),

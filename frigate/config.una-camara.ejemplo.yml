@@ -1,0 +1,80 @@
+# Una cámara sola, por su dirección RTSP. Ver ../README.md.
+#
+# Esta plantilla es para UNA cámara con RTSP (una TP-Link Tapo, una cámara IP
+# suelta) conectada a la misma red que la Pi, en vez del grabador. El
+# instalador la copia a config.yml cuando corrés  ./instalar.sh --camara  y
+# pone la dirección de la cámara en el .env (no en el repositorio).
+#
+# LAS ZONAS de abajo son un dibujo de prueba, repartido en cuatro: hay que
+# corregirlas en la pantalla de Frigate (Ajustes → Masks / Zones) con la
+# cámara ya puesta en su lugar. Los nombres puerta, salon, fila y caja son los
+# que espera el puente: no cambiarlos.
+
+mqtt:
+  enabled: true
+  host: mosquitto
+
+detectors:
+  hailo:
+    type: hailo8l        # sirve para el Hailo-8 y el Hailo-8L: Frigate se da cuenta solo
+    device: PCIe
+
+model:
+  width: 320
+  height: 320
+  input_tensor: nhwc
+  input_pixel_format: rgb
+  input_dtype: int
+  model_type: yolo-generic
+  labelmap_path: /labelmap/coco-80.txt
+
+objects:
+  track:
+    - person
+
+record:
+  enabled: false
+snapshots:
+  enabled: false
+audio:
+  enabled: false
+
+detect:
+  enabled: true
+  width: 1280
+  height: 720
+  fps: 5
+
+cameras:
+  camara1:
+    ffmpeg:
+      # Sin aceleración por hardware: una cámara sola la decodifica el
+      # procesador sin problema. El usuario, la clave, la IP, el puerto y la
+      # ruta del video están en el .env (los pone ./instalar.sh --camara).
+      hwaccel_args: ""
+      inputs:
+        - path: rtsp://{FRIGATE_RTSP_USER}:{FRIGATE_RTSP_PASSWORD}@{FRIGATE_CAMARA_IP}:{FRIGATE_CAMARA_PUERTO}{FRIGATE_CAMARA_RUTA}
+          roles:
+            - detect
+    zones:
+      puerta:
+        friendly_name: "La puerta"
+        coordinates: 0.000,0.000,0.350,0.000,0.350,0.400,0.000,0.400
+        inertia: 2
+        objects:
+          - person
+      salon:
+        friendly_name: "El salón"
+        coordinates: 0.350,0.000,1.000,0.000,1.000,0.550,0.350,0.550
+        objects:
+          - person
+      caja:
+        friendly_name: "La caja"
+        coordinates: 0.000,0.550,0.500,0.550,0.500,1.000,0.000,1.000
+        objects:
+          - person
+      fila:
+        friendly_name: "Donde se empieza a pedir"
+        coordinates: 0.500,0.550,1.000,0.550,1.000,1.000,0.500,1.000
+        objects:
+          - person
