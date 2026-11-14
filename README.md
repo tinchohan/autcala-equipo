@@ -163,6 +163,14 @@ Cómo se cuenta cada cosa está explicado al principio de `puente/puente.py`.
 
 ## Cosas a saber
 
+- **Las cámaras que se mueven.** Las zonas y las máscaras son dibujos fijos
+  sobre la imagen: valen para una posición de la cámara. Se puede acomodar
+  la cámara para que coincida con el dibujo en vez de corregir el dibujo,
+  pero una vez que coincide no hay que moverla. Si la cámara 1 se mueve,
+  cuenta mal sin avisar; si se mueve una que tiene la calle tapada, la calle
+  queda a la vista y de noche aparecen avisos falsos. Conviene guardar esa
+  posición como punto fijo en la app de la cámara y volver siempre a él.
+  Una cámara sin zonas ni máscaras (la cocina) se puede mover sin problema.
 - **El PIN.** Si el servidor lo rechaza, el puente espera 15 minutos antes
   de probar de nuevo, para no trabarle la caja al local. Si se cambia el PIN
   en el panel, hay que cambiarlo acá: `./instalar.sh --configurar`.
