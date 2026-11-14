@@ -82,7 +82,7 @@ la cámara. Copiarlos a la carpeta `clips/` con estos nombres:
 | Archivo | Qué ve esa cámara |
 |---|---|
 | `camara1.mp4` | El mostrador, desde donde se empieza a pedir. Es la que cuenta |
-| `camara2.mp4` | Desde atrás de la caja, mirando a la puerta |
+| `camara2.mp4` | Desde atrás de la caja, mirando a la puerta. Mide el segundo mostrador, si lo hay |
 | `camara3.mp4` | El salón desde el fondo, con la vereda por los vidrios |
 | `camara4.mp4` | La cocina |
 
@@ -100,6 +100,11 @@ Qué mirar en la pantalla de Frigate:
   que cuenta es dónde caen LOS PIES (el centro de abajo del recuadro). La
   gente de la calle no tiene que tener recuadro; la de atrás del mostrador
   sí, pero fuera de toda zona.
+- **Dos mostradores.** La cámara 1 mide el mostrador principal y la 2, el
+  segundo (una heladería, por ejemplo): cada una con su `fila` y su `caja`.
+  La puerta y el salón van dibujados en una sola cámara, para no contar dos
+  veces a la misma persona. Si el local tiene un solo mostrador, se le
+  borran las dos zonas a la cámara 2.
 - **La calle.** Las cámaras 2 y 3 ven la vereda por la puerta y los vidrios.
   Si alguien que pasa por afuera queda con recuadro, hay que agrandar la
   máscara de esa cámara: con el local cerrado sería un aviso falso.

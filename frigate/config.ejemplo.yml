@@ -107,12 +107,20 @@ cameras:
   # La cámara 2: desde atrás de la caja, mirando a la puerta. Ve la pantalla
   # de la caja, los posnet, la puerta de frente y las mesas.
   #
-  # VA SIN ZONAS A PROPÓSITO. Las entradas, la fila y la caja las cuenta la
-  # cámara 1: si las dos tuvieran zonas del cliente, la misma persona se
-  # contaría dos veces. Esta sirve para avisar si se ve a alguien con el
-  # local cerrado y, más adelante, para la foto de un aviso. (Si en la
-  # práctica la puerta se ve mejor desde acá, se le dibuja `puerta` y `salon`
-  # a esta y se le saca `puerta` a la cámara 1.)
+  # Mide el SEGUNDO MOSTRADOR del local (en el local de donde salió este
+  # dibujo, el de la heladería), que la cámara 1 ve de lejos: `fila` es a lo
+  # largo del freezer, donde el cliente elige y espera, y `caja` es frente al
+  # mostrador, donde paga. Los avisos de esta cámara salen con su número, así
+  # se sabe de qué mostrador son.
+  #
+  # NO LLEVA `puerta` NI `salon` A PROPÓSITO: las entradas y la gente en el
+  # salón las cuenta la cámara 1. Si las dos los tuvieran, la misma persona
+  # se contaría dos veces. Un local con un solo mostrador le saca las dos
+  # zonas a esta cámara y listo.
+  #
+  # Dibujadas sobre un clip de noche: revisarlas de día, con clientes. Quien
+  # está pegado al freezer tiene los pies tapados; por eso `fila` pisa un
+  # poco el borde del freezer.
   camara2:
     ffmpeg:
       # Si falta el clip, Frigate muestra esta cámara caída y las otras siguen.
@@ -134,10 +142,21 @@ cameras:
               friendly_name: "La vereda, por la puerta y los vidrios"
               enabled: true
               coordinates: "0.090,0.000,1.000,0.000,1.000,0.400,0.500,0.400,0.500,0.280,0.090,0.280"
+    zones:
+      caja:
+        friendly_name: "La caja del segundo mostrador"
+        coordinates: 0.548,0.500,0.690,0.500,0.740,0.640,0.740,0.800,0.600,0.710,0.548,0.660
+        objects:
+          - person
+      fila:
+        friendly_name: "Frente al freezer"
+        coordinates: 0.740,0.700,1.000,0.830,1.000,0.970,0.740,0.800
+        objects:
+          - person
 
   # La cámara 3: el salón visto desde el fondo, hacia la puerta. Más de la
   # mitad de la imagen es la vereda y la calle, con gente que pasa pegada al
-  # vidrio. SIN ZONAS (las cuentas son de la cámara 1) y con casi todo
+  # vidrio. SIN ZONAS (las cuentas son de las cámaras 1 y 2) y con casi todo
   # tapado: sólo queda el piso de adentro. Sirve para lo de fuera de horario.
   camara3:
     ffmpeg:

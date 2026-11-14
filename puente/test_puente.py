@@ -126,6 +126,21 @@ ok(tramo(d, T0)["esperas"] == 2, "volver a la caja no cuenta otra espera")
 ok(puente.Diario._numero("camara2") == 2 and puente.Diario._numero("cam12") == 12 and puente.Diario._numero("mostrador") == 0,
    "el número de la cámara sale de su nombre")
 
+print("\n== dos mostradores, dos cámaras ==")
+d = nuevo()
+d.aviso(aviso("s1", T0, ["salon"], "new"), T0)                                  # la cámara 1 ve a tres en el salón
+d.aviso(aviso("s2", T0, ["salon"], "new"), T0)
+d.aviso(aviso("s3", T0, ["fila"], "new"), T0)                                   # uno de ellos, en la fila del primer mostrador
+d.aviso(aviso("h1", T0 + 1, ["fila"], "new", camara="camara2"), T0 + 1)         # la cámara 2 ve a dos de esos tres
+d.aviso(aviso("h2", T0 + 1, ["caja"], "new", camara="camara2"), T0 + 1)         # en el segundo mostrador
+ok(tramo(d, T0)["en_salon"] == 3 and tramo(d, T0)["en_fila"] == 3,
+   "en el salón vale la cámara que más ve (no se cuenta dos veces a nadie); en la fila se suman los dos mostradores")
+d.aviso(aviso("h1", T0 + 61, ["caja"], camara="camara2"), T0 + 61)
+d.aviso(aviso("h1", T0 + 100, [], "end", camara="camara2"), T0 + 100)
+ok(tramo(d, T0)["esperas"] == 1 and tramo(d, T0)["espera_s"] == 60 and tramo(d, T0)["entraron"] == 0
+   and d.disco.leer("eventos", "caja-h1")["camara"] == 2 and d.disco.leer("eventos", "caja-h1")["segundos"] == 39,
+   "el segundo mostrador mide su espera y su caja, y el aviso dice que es de la cámara 2; ahí no se cuentan entradas")
+
 print("\n== fuera de horario ==")
 NOCHE = a_las(3, 12)
 d = nuevo()
@@ -282,6 +297,10 @@ ok(not re.search(r"snapshot|thumbnail|\.jpg|\.png|base64|imagen =|foto", FUENTE.
 ok(not [linea for linea in FUENTE.splitlines() if "log." in linea and re.search(r"self\.pin|\"PIN\"\]|token\b(?!\.)", linea)]
    and "requests" not in FUENTE,
    "ni el PIN ni el token van a un log")
+CAM2 = FRIGATE.split("  camara2:")[1].split("  camara3:")[0]
+ok("zones:" in CAM2 and "      caja:" in CAM2 and "      fila:" in CAM2 and "      puerta:" not in CAM2
+   and "      salon:" not in CAM2 and FRIGATE.count("      puerta:") == 1 and FRIGATE.count("      salon:") == 1,
+   "la cámara 2 mide el segundo mostrador (fila y caja), y la puerta y el salón están en una sola cámara")
 ok(all(f"{z}:" in FRIGATE for z in (puente.PUERTA, puente.SALON, puente.FILA, puente.CAJA))
    and "enabled: false" in FRIGATE.split("record:")[1][:80] and "enabled: false" in FRIGATE.split("snapshots:")[1][:80],
    "las zonas de Frigate se llaman como las espera el puente, y Frigate no graba ni saca fotos")

@@ -26,6 +26,10 @@ frigate/config.ejemplo.yml):
   fila    donde el cliente empieza a pedir
   caja    donde paga
 
+Un local con dos mostradores (el de siempre y, por ejemplo, una heladería)
+puede tener `fila` y `caja` en dos cámaras, una por mostrador: cada aviso
+sale con el número de su cámara. `puerta` y `salon` van en una sola cámara.
+
 Cómo se cuenta:
 - ENTRÓ: una persona que apareció primero en `puerta` y después pisó `salon`,
   `fila` o `caja`. La que aparece adentro y termina en la puerta, salió.
@@ -168,8 +172,16 @@ class Diario:
         self.disco.guardar("tramos", clave, tr, t)
 
     def _presentes(self, t: float) -> None:
-        """Cuántos hay ahora en el salón y en la fila: queda el máximo del tramo."""
-        en_salon = sum(1 for p in self.personas.values() if p["zonas"] & DEL_CLIENTE)
+        """Cuántos hay ahora en el salón y en la fila: queda el máximo del tramo.
+
+        En el salón no se suman las cámaras: dos cámaras que ven el mismo
+        piso ven a la misma gente, así que vale la que más ve. En la fila sí
+        se suman, porque cada cámara con fila mira un mostrador distinto."""
+        por_camara: dict = {}
+        for p in self.personas.values():
+            if p["zonas"] & DEL_CLIENTE:
+                por_camara[p["camara"]] = por_camara.get(p["camara"], 0) + 1
+        en_salon = max(por_camara.values(), default=0)
         en_fila = sum(1 for p in self.personas.values() if p["zonas"] & {FILA, CAJA})
         clave, tr = self._tramo(t)
         if en_salon > tr["en_salon"] or en_fila > tr["en_fila"]:
