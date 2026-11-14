@@ -9,8 +9,8 @@ en su tablero.
 (el grabador del local ya graba) y el puente manda sólo cuentas, duraciones y
 horas. Cuenta personas; no las reconoce.
 
-El equipo va sin monitor ni teclado: enchufado a la corriente y con un cable
-de red al router del local. Se prepara una vez, desde otra computadora.
+En el local el equipo va sin monitor ni teclado: enchufado a la corriente y
+con un cable de red al router. Se prepara una vez, antes de llevarlo.
 
 **Estado: escrito y probado en una PC; todavía no corrió en una Pi.** El
 puente tiene sus pruebas (`puente/test_puente.py`). La configuración de
@@ -34,9 +34,8 @@ corrigen en su pantalla). Por eso actualizar con `git pull` no los pisa.
 
 ## Instalar
 
-Desde otra computadora de la misma red, entrar a la Pi por SSH
-(`ssh usuario@IP-DE-LA-PI`; el SSH se activa al grabar la tarjeta con
-Raspberry Pi Imager). Después:
+Con la Pi conectada a un monitor y un teclado, como una computadora más,
+abrir la terminal y escribir:
 
 ```
 git clone https://github.com/tinchohan/autcala-equipo.git
@@ -51,6 +50,14 @@ Frigate y cómo ver lo que cuenta el puente.
 
 Se puede correr las veces que haga falta. `./instalar.sh --estado` sólo dice
 cómo está cada cosa.
+
+La pantalla de Frigate se abre en el navegador de la misma Pi, en
+`https://localhost:8971`, o desde otra computadora de la misma red, en
+`https://IP-DE-LA-PI:8971`.
+
+(Si se prefiere no conectarle monitor, todo esto se puede hacer igual desde
+otra computadora, entrando por SSH: `ssh usuario@IP-DE-LA-PI`. El SSH se
+activa al grabar la tarjeta con Raspberry Pi Imager.)
 
 ### El controlador del Hailo
 
@@ -83,7 +90,7 @@ Si falta alguno, Frigate muestra esa cámara caída y las otras siguen. Con
 los cuatro clips en alta resolución la Pi trabaja más que en el local, donde
 lee el canal liviano de cada cámara.
 
-Qué mirar en la pantalla de Frigate (`https://IP-DE-LA-PI:8971`):
+Qué mirar en la pantalla de Frigate:
 
 - **Que detecte.** En la vista de la cámara, modo «Debug», con «Bounding
   boxes» y «Zones»: cada persona con su recuadro, y las zonas dibujadas.
@@ -126,8 +133,8 @@ estaba. Lo deja guardado en el `.env` del equipo, que sólo puede leer su
 usuario.
 
 En el local alcanza con enchufar el equipo a la corriente y al router: al
-prender arranca solo. Para corregir zonas hay que entrar a la pantalla de
-Frigate desde una computadora de esa misma red.
+prender arranca solo, sin monitor. Para corregir zonas más adelante hay que
+entrar a la pantalla de Frigate desde una computadora de esa misma red.
 
 ## Qué manda
 

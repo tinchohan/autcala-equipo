@@ -256,7 +256,9 @@ dice "Listo. Lo que sigue:"
 cat <<FIN
   1. La clave de Frigate sale una sola vez en su registro:
        $DOCKER logs frigate 2>&1 | grep -i password
-  2. Abrir en un navegador de la misma red:  https://${IP:-IP-DE-LA-PI}:8971
+  2. Abrir la pantalla de Frigate en el navegador de esta misma Pi:
+       https://localhost:8971
+     o desde otra computadora de la misma red:  https://${IP:-IP-DE-LA-PI}:8971
      (avisa que el certificado no es conocido: es el propio de Frigate)
   3. Lo que va contando el puente, cada minuto:
        $DOCKER compose logs -f puente
