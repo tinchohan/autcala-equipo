@@ -21,7 +21,7 @@ un local; la primera vez que arranque en una Pi puede haber algo para tocar.
 
 | Archivo | Qué es |
 |---|---|
-| `instalar.sh` | El instalador: deja todo andando y configura el equipo para un local |
+| `instalar.sh` | El instalador: deja todo andando, configura el equipo para un local y, si se pide, lo deja accesible desde afuera |
 | `docker-compose.yml` | Levanta las tres piezas: Frigate, el correo interno (MQTT) y el puente |
 | `frigate/config.ejemplo.yml` | La plantilla de Frigate: las cámaras, las zonas (puerta, salón, fila, caja) y las máscaras de la calle |
 | `puente/puente.py` | El puente: escucha a Frigate, cuenta, guarda en disco y manda |
@@ -141,6 +141,23 @@ usuario.
 En el local alcanza con enchufar el equipo a la corriente y al router: al
 prender arranca solo, sin monitor. Para corregir zonas más adelante hay que
 entrar a la pantalla de Frigate desde una computadora de esa misma red.
+
+## Entrar al equipo sin ir al local
+
+```
+./instalar.sh --remoto
+```
+
+Instala Tailscale, una red privada entre los equipos de una misma cuenta
+(gratis, tailscale.com), y pide entrar con esa cuenta. Con eso, desde otra
+computadora de la misma cuenta se abre la pantalla de Frigate del equipo y,
+si se habilitó, su terminal. No hay que abrir nada en el router del local.
+
+También sirve para probar con las cámaras de un local sin llevar el equipo:
+si en el local hay una computadora con Tailscale que comparte su red
+(«subnet router»), el equipo ve el grabador con su IP de siempre, y se carga
+con `./instalar.sh --configurar`. El lugar donde está el equipo y el local
+no pueden tener la misma numeración de red.
 
 ## Qué manda
 

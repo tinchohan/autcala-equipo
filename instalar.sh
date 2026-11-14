@@ -5,6 +5,7 @@
 #     ./instalar.sh                 instala Docker si falta, prepara todo y lo levanta
 #     ./instalar.sh --configurar    pregunta el link de la caja, el PIN, el horario y el grabador
 #     ./instalar.sh --controlador   instala el controlador del Hailo que pide Frigate
+#     ./instalar.sh --remoto        pone este equipo en Tailscale, para entrarle desde otro lado
 #     ./instalar.sh --estado        sólo dice cómo está cada cosa
 #
 # Se puede correr todas las veces que haga falta: lo que ya está, no lo toca.
@@ -14,6 +15,10 @@
 # OJO con --controlador: reemplaza el controlador del Hailo que instaló
 # `hailo-all`. Los ejemplos de ~/hailo-apps pueden dejar de andar. Por eso no
 # se hace solo: hay que pedirlo.
+#
+# --remoto tampoco se hace solo: instala Tailscale, una red privada entre tus
+# equipos. Sirve para entrar a esta Pi sin estar en el local y, mientras se
+# prueba, para que la Pi vea las cámaras de un local desde otro lugar.
 set -euo pipefail
 
 cd "$(dirname "$0")"
@@ -27,13 +32,15 @@ corta() { printf '\n%s\n' "$*" >&2; exit 1; }
 
 CONTROLADOR=no
 CONFIGURAR=no
+REMOTO=no
 SOLO_ESTADO=no
 for arg in "$@"; do
   case "$arg" in
     --controlador) CONTROLADOR=si ;;
     --configurar) CONFIGURAR=si ;;
+    --remoto) REMOTO=si ;;
     --estado) SOLO_ESTADO=si ;;
-    -h|--help) sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h|--help) sed -n '2,21p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) corta "No conozco la opción $arg. Probá ./instalar.sh --help" ;;
   esac
 done
@@ -103,6 +110,11 @@ estado() {
     if [ "$hay" -gt 0 ]; then bien "Frigate lee clips de prueba ($hay de 4 en clips/)"; else falta "los clips de prueba (clips/camara1.mp4 … camara4.mp4)"; fi
   elif [ -f frigate/config.yml ]; then
     bien "Frigate lee las cámaras del grabador $(actual FRIGATE_NVR_IP)"
+  fi
+  if command -v tailscale >/dev/null 2>&1; then
+    local ts
+    ts="$(tailscale ip -4 2>/dev/null | head -n 1 || true)"
+    if [ -n "$ts" ]; then bien "en Tailscale, como $ts"; else falta "Tailscale está instalado pero sin entrar (./instalar.sh --remoto)"; fi
   fi
   if command -v docker >/dev/null 2>&1 && [ -n "$(docker compose ps -q 2>/dev/null)" ]; then
     docker compose ps --format '  {{.Service}}: {{.Status}}'
@@ -192,6 +204,50 @@ if [ "$SOLO_ESTADO" = si ]; then estado; exit 0; fi
 
 [ "$(uname -m)" = "aarch64" ] || corta "Este programa es para la Raspberry Pi (64 bits). Acá hay $(uname -m)."
 [ "$(id -u)" -ne 0 ] || corta "Corrélo con tu usuario, sin sudo: pide la clave sólo cuando hace falta."
+
+# ── 0. Tailscale (sólo si se pidió) ─────────────────────────────────────────
+if [ "$REMOTO" = si ]; then
+  dice "Este equipo, en tu red de Tailscale"
+  echo "Tailscale es una red privada entre tus equipos. Hace falta una cuenta"
+  echo "(gratis, en tailscale.com); todos tus equipos entran con la misma."
+  if ! command -v tailscale >/dev/null 2>&1; then
+    echo "Instalo Tailscale (con su instalador oficial, tailscale.com/install.sh)."
+    curl -fsSL https://tailscale.com/install.sh -o /tmp/tailscale-install.sh
+    sudo sh /tmp/tailscale-install.sh
+    rm -f /tmp/tailscale-install.sh
+  fi
+  echo
+  echo "Con la terminal habilitada vas a poder entrar a esta Pi desde tus otros"
+  echo "equipos de Tailscale escribiendo:  ssh $USER@NOMBRE-DE-ESTA-PI"
+  read -r -p "¿Habilito entrar a la terminal de esta Pi por Tailscale? (s/n) " r
+  echo
+  echo "Ahora va a aparecer una dirección: abrila en un navegador y entrá con"
+  echo "tu cuenta de Tailscale. Cuando lo hagas, esto sigue solo."
+  if [ "$r" = "s" ]; then
+    sudo tailscale up --accept-routes --ssh
+  else
+    sudo tailscale up --accept-routes
+  fi
+  TS="$(tailscale ip -4 2>/dev/null | head -n 1 || true)"
+  [ -n "$TS" ] || corta "Tailscale no terminó de entrar. Probá de nuevo: ./instalar.sh --remoto"
+  dice "Listo: esta Pi está en tu red de Tailscale como $TS"
+  cat <<FIN
+  Desde otro equipo tuyo con Tailscale, la pantalla de Frigate de esta Pi es:
+       https://$TS:8971
+
+  Para que no pida entrar de nuevo cada seis meses: en la consola de
+  Tailscale, página «Machines», en el menú de la derecha de este equipo,
+  «Disable Key Expiry».
+
+  Si en el local hay una computadora con Tailscale que comparte su red, esta
+  Pi ya ve el grabador de ese local con su IP de siempre. Probalo:
+       ping IP-DEL-GRABADOR
+  y después cargá esa IP con:  ./instalar.sh --configurar
+  (El lugar donde está la Pi y el local no pueden tener la misma numeración
+  de red: si los dos son 192.168.1.x, no anda hasta cambiar uno.)
+FIN
+  exit 0
+fi
 
 # ── 1. Docker ───────────────────────────────────────────────────────────────
 if ! command -v docker >/dev/null 2>&1 || ! docker compose version >/dev/null 2>&1; then

@@ -319,9 +319,10 @@ ok("1883" not in "".join(l for l in COMPOSE.splitlines() if l.strip().startswith
 
 ok("\r" not in INSTALAR and INSTALAR.startswith("#!/usr/bin/env bash\n") and "set -euo pipefail" in INSTALAR
    and "CONTROLADOR=no" in INSTALAR and INSTALAR.index('if [ "$CONTROLADOR" = si ]') < INSTALAR.index("hailo_frigate.sh")
+   and "REMOTO=no" in INSTALAR and INSTALAR.index('if [ "$REMOTO" = si ]') < INSTALAR.index("tailscale-install.sh")
    and "rm -rf" not in INSTALAR and "if [ ! -f .env ]; then" in INSTALAR
    and "if [ ! -f frigate/config.yml ]; then" in INSTALAR,
-   "el instalador no cambia el controlador del Hailo si no se lo piden, no borra nada y no pisa el .env ni las zonas")
+   "el instalador no cambia el controlador del Hailo ni instala Tailscale si no se lo piden, no borra nada y no pisa el .env ni las zonas")
 PUBLICO = "".join(leer(x) for x in ("README.md", "puente/puente.py", "frigate/config.ejemplo.yml", ".env.example",
                                     "docker-compose.yml")) + INSTALAR
 ok(not re.search(r"docs/ojo|\.\./docs|juramento|subway|\bH4\b|mart[ií]n|@gmail", PUBLICO, re.I),
