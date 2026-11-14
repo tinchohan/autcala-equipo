@@ -115,7 +115,7 @@ configurar() {
   dice "Configurar este equipo para un local"
   echo "Hacen falta el link de la caja del local (está en el panel de Autcala,"
   echo "«Link de la caja») y su PIN. Enter deja lo que ya estaba [entre corchetes]."
-  local enlace id pin abre cierra ip usuario clave r
+  local enlace id pin abre cierra ip puerto usuario clave r
 
   read -r -p "Link de la caja [$(actual LOCAL_ID)]: " enlace
   if [ -n "$enlace" ]; then
@@ -143,16 +143,22 @@ configurar() {
   echo
   echo "El grabador de las cámaras. Enter en la IP lo deja para después (Frigate"
   echo "sigue leyendo los clips de prueba)."
-  read -r -p "IP del grabador en la red del local [$(actual FRIGATE_NVR_IP)]: " ip
+  read -r -p "IP del grabador en la red del local (o su dirección, si se llega desde afuera) [$(actual FRIGATE_NVR_IP)]: " ip
   if [ -n "$ip" ]; then
-    [[ "$ip" =~ ^[0-9]{1,3}(\.[0-9]{1,3}){3}$ ]] || corta "«$ip» no es una IP. Va como 192.168.1.64."
+    [[ "$ip" =~ ^[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?$ ]] || corta "«$ip» no es una IP ni un nombre. Va como 192.168.1.64."
     poner FRIGATE_NVR_IP "$ip"
+    read -r -p "Puerto del grabador para el video (RTSP) [$(actual FRIGATE_NVR_PUERTO)]: " puerto
+    if [ -n "$puerto" ]; then
+      [[ "$puerto" =~ ^[0-9]{1,5}$ ]] && [ "$puerto" -ge 1 ] && [ "$puerto" -le 65535 ] || corta "«$puerto» no es un puerto. El de siempre es 554."
+      poner FRIGATE_NVR_PUERTO "$puerto"
+    fi
     read -r -p "Usuario del grabador [$(actual FRIGATE_RTSP_USER)]: " usuario
     [ -z "$usuario" ] || poner FRIGATE_RTSP_USER "$(codificar "$usuario")"
     read -r -s -p "Clave del grabador (no se ve al escribirla)$([ -n "$(actual FRIGATE_RTSP_PASSWORD)" ] && echo ' [la que estaba]'): " clave
     echo
     [ -z "$clave" ] || poner FRIGATE_RTSP_PASSWORD "$(codificar "$clave")"
   fi
+  [ -n "$(actual FRIGATE_NVR_PUERTO)" ] || poner FRIGATE_NVR_PUERTO 554
   if [ -n "$(actual FRIGATE_NVR_IP)" ] && grep -q '/media/pruebas/' frigate/config.yml; then
     echo
     echo "Frigate está leyendo los clips de prueba. Las zonas que hayas corregido"
@@ -161,7 +167,7 @@ configurar() {
     if [ "$r" = "s" ]; then
       cp frigate/config.yml "frigate/config.yml.bak-$(date +%Y%m%d-%H%M%S)"
       sed -E -i \
-        -e 's#path: /media/pruebas/camara([0-9])\.mp4#path: rtsp://{FRIGATE_RTSP_USER}:{FRIGATE_RTSP_PASSWORD}@{FRIGATE_NVR_IP}:554/Streaming/Channels/\102#' \
+        -e 's#path: /media/pruebas/camara([0-9])\.mp4#path: rtsp://{FRIGATE_RTSP_USER}:{FRIGATE_RTSP_PASSWORD}@{FRIGATE_NVR_IP}:{FRIGATE_NVR_PUERTO}/Streaming/Channels/\102#' \
         -e '/input_args: -re -stream_loop/d' \
         -e '/hwaccel_args: ""/d' frigate/config.yml
       REINICIAR_FRIGATE=si

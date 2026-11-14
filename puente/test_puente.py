@@ -310,7 +310,9 @@ ok({".env", "frigate/config.yml"} <= set(IGNORAR.split()) and "{FRIGATE_RTSP_PAS
    "las claves viven en el .env del equipo, que no entra al repositorio, igual que su configuración de Frigate")
 ok("read -r -s -p \"PIN de la caja" in INSTALAR and "read -r -s -p \"Clave del grabador" in INSTALAR
    and "chmod 600 .env" in INSTALAR and 'cp frigate/config.yml "frigate/config.yml.bak-' in INSTALAR
-   and "/media/pruebas/camara1.mp4" in FRIGATE and "rtsp://" not in FRIGATE,
+   and "/media/pruebas/camara1.mp4" in FRIGATE and "rtsp://" not in FRIGATE
+   and "@{FRIGATE_NVR_IP}:{FRIGATE_NVR_PUERTO}/Streaming/Channels/" in INSTALAR
+   and "FRIGATE_NVR_PUERTO=554\n" in leer(".env.example") and "poner FRIGATE_NVR_PUERTO 554" in INSTALAR,
    "al configurar, el PIN y la clave no se ven al escribirlos, el .env queda sólo para su usuario y se guarda una copia antes de cambiar Frigate")
 ok("1883" not in "".join(l for l in COMPOSE.splitlines() if l.strip().startswith('- "')) and "5000:5000" not in COMPOSE,
    "ni el MQTT ni la puerta sin clave de Frigate quedan abiertos a la red del local")

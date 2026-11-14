@@ -126,8 +126,9 @@ Pregunta, de a una cosa:
    servidor igual que la caja: con ese PIN.
 3. **El horario del local**, para avisar si se ve a alguien con el local
    cerrado.
-4. **El grabador de las cámaras**: su IP en la red del local, el usuario y
-   la clave. Con eso Frigate deja los clips y pasa a leer las cámaras
+4. **El grabador de las cámaras**: su IP en la red del local, el puerto
+   del video (554, salvo que se haya cambiado), el usuario y la clave. Con
+   eso Frigate deja los clips y pasa a leer las cámaras
    (camara1 el canal 1 del grabador, camara2 el 2, y así). Las zonas quedan
    como estaban. Si se deja la IP vacía, sigue con los clips.
 5. **Si empieza a mandar.** Con «s», lo que cuenta aparece en el tablero del
