@@ -350,9 +350,22 @@ fi
 
 # ── 4. Levantar ─────────────────────────────────────────────────────────────
 dice "Bajo Frigate y armo el puente (la primera vez tarda varios minutos)"
-$DOCKER compose pull mosquitto frigate
-$DOCKER compose build puente
-$DOCKER compose up -d
+# La imagen de Frigate es grande: si la conexión se corta a mitad, Docker ya
+# guardó lo que bajó, así que reintentar avanza desde ahí. Por eso cada bajada
+# va en un bucle, y un timeout no frena todo el instalador.
+reintentar() {  # reintentar "qué" comando...: hasta 10 veces, 5 s entre medio
+  local que="$1"; shift
+  local n=0
+  until "$@"; do
+    n=$((n + 1))
+    [ "$n" -ge 10 ] && corta "No pude $que (se cortó 10 veces). Casi siempre es la conexión: probá la Pi por cable y volvé a correr ./instalar.sh; lo ya bajado no se vuelve a bajar."
+    echo "  (se cortó; reintento $n de: $que ...)"
+    sleep 5
+  done
+}
+reintentar "bajar Frigate" $DOCKER compose pull mosquitto frigate
+reintentar "armar el puente" $DOCKER compose build puente
+$DOCKER compose up -d || dice "Algo falló al levantar. Mirá el estado de abajo y, si Frigate no quedó andando: $DOCKER compose logs frigate"
 if [ "$REINICIAR_FRIGATE" = si ]; then $DOCKER compose restart frigate; fi
 
 estado
