@@ -22,10 +22,12 @@ un local; la primera vez que arranque en una Pi puede haber algo para tocar.
 | Archivo | Qué es |
 |---|---|
 | `instalar.sh` | El instalador: deja todo andando, configura el equipo para un local y, si se pide, lo deja accesible desde afuera |
-| `docker-compose.yml` | Levanta las tres piezas: Frigate, el correo interno (MQTT) y el puente |
+| `docker-compose.yml` | Levanta las cuatro piezas: Frigate, el correo interno (MQTT), el puente y el oído |
 | `frigate/config.ejemplo.yml` | La plantilla de Frigate: las cámaras, las zonas (puerta, salón, fila, caja) y las máscaras de la calle |
 | `puente/puente.py` | El puente: escucha a Frigate, cuenta, guarda en disco y manda |
 | `puente/test_puente.py` | Sus pruebas: `python -X utf8 test_puente.py` |
+| `oido/oido.py` | El oído: saca el audio de la cámara, detecta la voz y manda los tramos al oído del servidor (sólo con `OIDO=si`) |
+| `oido/test_oido.py` | Sus pruebas: `python -X utf8 test_oido.py` |
 | `.env.example` | Lo que es de cada equipo (se copia a `.env`) |
 
 De cada equipo, y fuera del repositorio: `.env` (el local, el PIN, el
@@ -246,6 +248,8 @@ Cómo se cuenta cada cosa está explicado al principio de `puente/puente.py`.
   vuelve (hasta 7 días de atraso).
 - **Un corte de luz.** Al volver arranca solo y sigue.
 - **Actualizar.** `git pull && ./instalar.sh`.
-- **El audio** de las cámaras todavía no pasa por acá.
+- **El audio** de la cámara pasa por acá sólo con `OIDO=si` (ver «La
+  cámara como oído»); apagado por defecto, para no chocar con el micrófono
+  de la PC del local.
 
 Todos los derechos reservados.
