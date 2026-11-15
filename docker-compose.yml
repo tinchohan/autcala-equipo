@@ -44,3 +44,11 @@ services:
       DISCO: /datos/puente.db
     volumes:
       - ./datos:/datos
+
+  # El oído: el audio de la cámara al oído del servidor. Sólo trabaja si en el
+  # .env está OIDO=si; si no, queda quieto (para no chocar con el micrófono de
+  # la PC del local).
+  oido:
+    build: ./oido
+    restart: unless-stopped
+    env_file: .env

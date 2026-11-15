@@ -177,6 +177,31 @@ si en el local hay una computadora con Tailscale que comparte su red
 con `./instalar.sh --configurar`. El lugar donde está el equipo y el local
 no pueden tener la misma numeración de red.
 
+## La cámara como oído
+
+El equipo también puede ser el **oído**: en vez del micrófono de la PC del
+local, el audio sale de la cámara. La Pi saca el audio del RTSP, detecta la
+voz y manda sólo los tramos con voz al **mismo oído del servidor** que hoy usa
+la caja, que los transcribe y arma los resúmenes de cada ticket.
+
+Está **apagado por defecto** (para no chocar con el micrófono de la PC). Se
+prende poniendo `OIDO=si` en el `.env`:
+
+```
+sed -i 's/^OIDO=.*/OIDO=si/' .env
+docker compose up -d
+```
+
+Para que mande de verdad hace falta, además, que el equipo tenga un local con
+el oído del servidor prendido (`./instalar.sh --configurar`) y `MANDAR=si`. El
+audio usa el canal `OIDO_RUTA` (en una Tapo, `/stream1`).
+
+**Lo que hay que probar:** que una cámara en el techo, lejos del mostrador,
+capte la voz lo bastante bien como para transcribirla. Si no alcanza, va un
+micrófono cerca del mostrador y la cámara sigue con la vista. Con `OIDO=si` y
+`MANDAR=no`, el oído escribe en su registro lo que oyó sin mandar nada
+(`docker compose logs -f oido`), para probar sin ensuciar.
+
 ## Qué manda
 
 Una vez por minuto, al servidor de Autcala y con el PIN de la caja:
