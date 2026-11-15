@@ -76,11 +76,11 @@ cameras:
             calle_arriba:
               friendly_name: "La calle, por la puerta y el vidrio del fondo"
               enabled: true
-              coordinates: "0.449,0.000,1.000,0.000,1.000,0.335,0.449,0.335"
+              coordinates: "0.449,0.000,0.999,0.000,0.999,0.335,0.449,0.335"
             calle_derecha:
               friendly_name: "La vereda, por el vidrio de la derecha"
               enabled: true
-              coordinates: "0.845,0.335,1.000,0.335,1.000,0.620,0.845,0.560"
+              coordinates: "0.845,0.335,0.999,0.335,0.999,0.620,0.845,0.560"
     zones:
       puerta:
         friendly_name: "La puerta"
@@ -95,12 +95,12 @@ cameras:
           - person
       fila:
         friendly_name: "Donde se empieza a pedir"
-        coordinates: 0.430,0.868,0.563,0.868,0.594,1.000,0.426,1.000
+        coordinates: 0.430,0.868,0.563,0.868,0.594,0.999,0.426,0.999
         objects:
           - person
       salon:
         friendly_name: "El salón"
-        coordinates: 0.457,0.479,0.617,0.479,0.617,0.347,0.845,0.347,0.845,0.560,1.000,0.620,1.000,1.000,0.594,1.000,0.563,0.868,0.547,0.611,0.434,0.611
+        coordinates: 0.457,0.479,0.617,0.479,0.617,0.347,0.845,0.347,0.845,0.560,0.999,0.620,0.999,0.999,0.594,0.999,0.563,0.868,0.547,0.611,0.434,0.611
         objects:
           - person
 
@@ -141,7 +141,7 @@ cameras:
             calle:
               friendly_name: "La vereda, por la puerta y los vidrios"
               enabled: true
-              coordinates: "0.090,0.000,1.000,0.000,1.000,0.400,0.500,0.400,0.500,0.280,0.090,0.280"
+              coordinates: "0.090,0.000,0.999,0.000,0.999,0.400,0.500,0.400,0.500,0.280,0.090,0.280"
     zones:
       caja:
         friendly_name: "La caja del segundo mostrador"
@@ -150,7 +150,7 @@ cameras:
           - person
       fila:
         friendly_name: "Frente al freezer"
-        coordinates: 0.740,0.700,1.000,0.830,1.000,0.970,0.740,0.800
+        coordinates: 0.740,0.700,0.999,0.830,0.999,0.970,0.740,0.800
         objects:
           - person
 
@@ -176,7 +176,7 @@ cameras:
             calle:
               friendly_name: "La vereda y la calle, por los vidrios"
               enabled: true
-              coordinates: "0.000,0.000,1.000,0.000,1.000,0.600,0.680,0.600,0.620,0.700,0.570,0.880,0.360,0.880,0.360,1.000,0.000,1.000"
+              coordinates: "0.000,0.000,0.999,0.000,0.999,0.600,0.680,0.600,0.620,0.700,0.570,0.880,0.360,0.880,0.360,0.999,0.000,0.999"
 
   # La cámara 4: la cocina. Sólo gente del local. SIN ZONAS: sirve para lo de
   # fuera de horario.
