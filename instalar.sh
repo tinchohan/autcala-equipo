@@ -304,19 +304,53 @@ fi
 if docker info >/dev/null 2>&1; then DOCKER="docker"; else DOCKER="sudo docker"; fi
 
 # ── 2. El controlador del Hailo que pide Frigate (sólo si se pidió) ─────────
-if [ "$CONTROLADOR" = si ]; then
-  dice "El controlador del Hailo para Frigate"
-  echo "Esto reemplaza el controlador que instaló hailo-all. Los ejemplos de"
-  echo "~/hailo-apps pueden dejar de andar. Al terminar hay que reiniciar la Pi."
-  if [ "$SISTEMA" = "bookworm" ]; then
-    echo
-    echo "Este sistema es Bookworm: antes hay que desactivar a mano el controlador"
-    echo "que trae. Los pasos están en la guía de Frigate, sección Hailo-8:"
-    echo "  $DOCS_HAILO"
-    echo "Hacelos, reiniciá y volvé a correr ./instalar.sh --controlador"
-    read -r -p "¿Ya los hiciste? (s/n) " r
-    [ "$r" = "s" ] || corta "Listo, no toqué nada."
+# Frigate trae libhailort 4.21.0; el host tiene que tener EL MISMO driver. El
+# `hailo-all` de Raspberry instala uno más nuevo (p. ej. 4.23.0) y entonces el
+# detector no arranca (HAILO_INVALID_DRIVER_VERSION) y Frigate reinicia en loop.
+# Este paso, en dos corridas con un reinicio en el medio: primero saca el driver
+# viejo (de apt, o el .ko que queda tirado, o el que trae el kernel) y después
+# instala el 4.21.0 que compila Frigate.
+VER_HAILO_FRIGATE="4.21.0"
+
+limpiar_driver_viejo() {  # saca cualquier driver del Hailo que no sea el de Frigate
+  if dpkg -l 2>/dev/null | grep -qE '^ii +(hailort-pcie-driver|hailo-all) '; then
+    dice "Saco el driver del Hailo que instaló apt (hailo-all / hailort-pcie-driver)"
+    sudo apt-get remove -y hailort-pcie-driver hailo-all || true
   fi
+  sudo modprobe -r hailo_pci 2>/dev/null || true
+  local f
+  f="$(modinfo -n hailo_pci 2>/dev/null || true)"
+  if [ -n "$f" ] && [ -e "$f" ]; then
+    case "$f" in
+      */kernel/*) dice "Desactivo el módulo que trae el sistema: $f"; sudo mv "$f" "$f.bak" ;;
+      *)          dice "Borro el módulo huérfano: $f"; sudo rm -f "$f" ;;
+    esac
+    sudo depmod -a
+  fi
+}
+
+if [ "$CONTROLADOR" = si ]; then
+  dice "El controlador del Hailo para Frigate ($VER_HAILO_FRIGATE)"
+  ver_actual="$(cat /sys/module/hailo_pci/version 2>/dev/null || true)"
+  hay_apt=no
+  if dpkg -l 2>/dev/null | grep -qE '^ii +(hailort-pcie-driver|hailo-all) '; then hay_apt=si; fi
+  # Fase 1: si hay un driver que no es el 4.21.0, sacarlo y pedir un reinicio.
+  if [ "$hay_apt" = si ] || { [ -n "$ver_actual" ] && [ "$ver_actual" != "$VER_HAILO_FRIGATE" ]; }; then
+    echo "Hay un driver del Hailo que no es el de Frigate (versión: ${ver_actual:-la de apt})."
+    echo "Lo saco. Después hay que REINICIAR y volver a correr ./instalar.sh --controlador."
+    read -r -p "¿Lo saco? (s/n) " r
+    [ "$r" = "s" ] || corta "Listo, no toqué nada."
+    limpiar_driver_viejo
+    dice "Driver viejo fuera. Reiniciá (sudo reboot) y corré ./instalar.sh --controlador de nuevo."
+    exit 0
+  fi
+  if [ "$ver_actual" = "$VER_HAILO_FRIGATE" ]; then
+    bien "el controlador ya es el $VER_HAILO_FRIGATE: nada que hacer"
+    exit 0
+  fi
+  # Fase 2: host limpio, instalar el driver de Frigate.
+  echo "El host está limpio. Esto baja y compila el driver v$VER_HAILO_FRIGATE que pide"
+  echo "Frigate. Los ejemplos de ~/hailo-apps pueden dejar de andar. Al terminar, reiniciar."
   read -r -p "¿Instalo el controlador de Frigate? (s/n) " r
   [ "$r" = "s" ] || corta "Listo, no toqué nada."
   curl -fsSL "$SCRIPT_HAILO" -o /tmp/hailo_frigate.sh

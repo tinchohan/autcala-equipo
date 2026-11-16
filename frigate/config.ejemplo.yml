@@ -33,6 +33,11 @@ model:
   input_dtype: int
   model_type: yolo-generic
   labelmap_path: /labelmap/coco-80.txt
+  # El modelo compilado para el Hailo-8 del AI HAT+ (26 TOPS). Sin esta línea,
+  # Frigate baja el del Hailo-8L y avisa "lower performance": anda igual, pero no
+  # aprovecha toda la placa. Si un equipo usara un Hailo-8L, borrá esta línea y
+  # Frigate elige el modelo solo.
+  path: https://hailo-model-zoo.s3.eu-west-2.amazonaws.com/ModelZoo/Compiled/v2.14.0/hailo8/yolov6n.hef
 
 objects:
   track:
