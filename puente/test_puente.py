@@ -203,6 +203,13 @@ ok(dos.pendientes("tramos", 10) == [("t9", {"entraron": 4}, 1)], "lo guardado so
 dos.db.close()
 os.remove(ruta)
 
+print("\n== un tramo viejo en el disco (de una versión sin a_caja) ==")
+d = nuevo()
+d.disco.guardar("tramos", puente.tramo_de(T0), {"entraron": 2, "camaras": 1}, T0)   # como lo dejó una versión vieja
+d.aviso(aviso("x", T0 + 5, ["caja"], "new"), T0 + 5)
+ok(tramo(d, T0)["a_caja"] == 1 and tramo(d, T0)["entraron"] == 2,
+   "un tramo guardado por una versión vieja (sin a_caja) no rompe: el campo nuevo arranca en 0 y suma")
+
 print("\n== mandar ==")
 
 

@@ -162,8 +162,10 @@ class Diario:
 
     # -- los tramos --
     def _tramo(self, t: float) -> tuple:
+        # Merge con TRAMO_VACIO: un tramo guardado por una versión vieja (sin
+        # algún campo, p. ej. a_caja) arranca igual con todos los campos, en 0.
         clave = tramo_de(t)
-        return clave, self.disco.leer("tramos", clave) or dict(TRAMO_VACIO)
+        return clave, {**TRAMO_VACIO, **(self.disco.leer("tramos", clave) or {})}
 
     def _sumar(self, t: float, **cuentas) -> None:
         clave, tr = self._tramo(t)
