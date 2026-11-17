@@ -167,6 +167,27 @@ ok('os.environ.get("OIDO"' in FUENTE and "OIDO=no" in leer(".env.example") and "
 ok("wav_de" in FUENTE and "16000" in FUENTE and "setnchannels(CANALES)" in FUENTE,
    "manda WAV en el formato que el servidor pide")
 
+print("\n== la limpieza de ruido (OIDO_DENOISE) ==")
+_guardar = os.environ.get("OIDO_DENOISE")
+try:
+    os.environ.pop("OIDO_DENOISE", None)
+    ok(oido._filtro_denoise() == "", "sin OIDO_DENOISE no se filtra nada (como hasta ahora)")
+    os.environ["OIDO_DENOISE"] = "no"
+    ok(oido._filtro_denoise() == "", "OIDO_DENOISE=no tampoco filtra")
+    os.environ["OIDO_DENOISE"] = "si"
+    ok(oido._filtro_denoise() == oido.DENOISE_DEFECTO and "afftdn" in oido._filtro_denoise(),
+       "OIDO_DENOISE=si aplica el filtro por defecto (denoiser FFT)")
+    os.environ["OIDO_DENOISE"] = "highpass=f=200,afftdn,dynaudnorm"
+    ok(oido._filtro_denoise() == "highpass=f=200,afftdn,dynaudnorm",
+       "un filtro de ffmpeg a medida se usa tal cual")
+finally:
+    if _guardar is None:
+        os.environ.pop("OIDO_DENOISE", None)
+    else:
+        os.environ["OIDO_DENOISE"] = _guardar
+ok("-af" in FUENTE and "_filtro_denoise()" in FUENTE.split("def capturar(")[1],
+   "el filtro se aplica en la captura de ffmpeg, antes del detector de voz")
+
 if fallos:
     print("\nFALLARON %d:" % len(fallos))
     for f in fallos:

@@ -204,6 +204,21 @@ micrófono cerca del mostrador y la cámara sigue con la vista. Con `OIDO=si` y
 `MANDAR=no`, el oído escribe en su registro lo que oyó sin mandar nada
 (`docker compose logs -f oido`), para probar sin ensuciar.
 
+**Limpiar el ruido (experimental).** Si el local es ruidoso y la voz llega
+tapada, se puede filtrar el ruido antes de transcribir poniendo `OIDO_DENOISE=si`
+en el `.env`:
+
+```
+sed -i 's/^OIDO_DENOISE=.*/OIDO_DENOISE=si/' .env
+docker compose up -d oido
+```
+
+Aplica un filtro de ffmpeg (corta el retumbe grave y un denoiser que sigue el
+ruido de fondo). También acepta un filtro de ffmpeg a medida (por ejemplo,
+sumarle `,dynaudnorm` para levantar una voz floja). Ayuda cuando la voz **está**
+pero tapada por ruido; no recupera una voz que llegó demasiado débil. Conviene
+probar con y sin, y comparar lo que transcribe.
+
 ## Qué manda
 
 Una vez por minuto, al servidor de Autcala y con el PIN de la caja:

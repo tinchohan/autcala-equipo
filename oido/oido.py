@@ -259,11 +259,33 @@ def url_rtsp() -> str:
     return f"rtsp://{cred}{ip}:{puerto}{ruta}"
 
 
+# El filtro de ffmpeg que limpia el ruido ANTES del detector de voz y de
+# Whisper. Con OIDO_DENOISE vacío o "no" no toca nada (como hasta ahora). "si"
+# aplica un filtro razonable para un local ruidoso: corta el retumbe grave y un
+# denoiser FFT que sigue el ruido de fondo. También acepta un filtro de ffmpeg a
+# medida (p. ej. `arnndn=m=modelo.rnnn` con un modelo RNNoise, o sumarle
+# `,dynaudnorm` para levantar una voz floja). Ayuda cuando la voz está tapada por
+# ruido; no inventa una voz que llegó demasiado débil.
+DENOISE_DEFECTO = "highpass=f=150,afftdn=nf=-25:tn=1"
+
+
+def _filtro_denoise() -> str:
+    v = os.environ.get("OIDO_DENOISE", "").strip()
+    if not v or v.lower() in ("no", "0", "false"):
+        return ""
+    if v.lower() in ("si", "sí", "1", "true"):
+        return DENOISE_DEFECTO
+    return v
+
+
 def capturar(url: str):
     """Los cuadros de audio de la cámara, de a FRAME_BYTES, con ffmpeg. Corta
     cuando ffmpeg se cae; main() lo vuelve a arrancar."""
-    cmd = ["ffmpeg", "-nostdin", "-loglevel", "error", "-rtsp_transport", "tcp", "-i", url,
-           "-vn", "-ac", str(CANALES), "-ar", str(RATE), "-f", "s16le", "pipe:1"]
+    cmd = ["ffmpeg", "-nostdin", "-loglevel", "error", "-rtsp_transport", "tcp", "-i", url, "-vn"]
+    filtro = _filtro_denoise()
+    if filtro:
+        cmd += ["-af", filtro]
+    cmd += ["-ac", str(CANALES), "-ar", str(RATE), "-f", "s16le", "pipe:1"]
     proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, bufsize=0)
     try:
         while True:
@@ -300,6 +322,8 @@ def main() -> None:
     url = url_rtsp()
     log.info("oído %s, por el canal %s", "de prueba: NO manda nada" if solo else "del local " + os.environ["LOCAL_ID"],
              os.environ.get("OIDO_RUTA", "/stream1"))
+    if _filtro_denoise():
+        log.info("limpieza de ruido activada (OIDO_DENOISE): %s", _filtro_denoise())
     prox_latido = 0.0
     while True:
         try:
