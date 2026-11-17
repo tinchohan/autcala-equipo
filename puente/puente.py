@@ -147,7 +147,7 @@ class Disco:
 # ── La cuenta ───────────────────────────────────────────────────────────────
 
 TRAMO_VACIO = {"entraron": 0, "en_salon": 0, "en_fila": 0, "esperas": 0, "espera_s": 0, "espera_max_s": 0,
-               "esperas_largas": 0, "camaras": 0}
+               "esperas_largas": 0, "a_caja": 0, "camaras": 0}
 
 
 class Diario:
@@ -210,8 +210,8 @@ class Diario:
         if p is None:
             p = self.personas[pid] = {"camara": d.get("camera") or "", "inicio": float(d.get("start_time") or t),
                                       "primera": None, "entro": False, "fila_desde": None, "espero": False,
-                                      "caja_desde": None, "caja_primera": None, "caja_s": 0.0, "zonas": set(),
-                                      "fuera": False, "visto": t}
+                                      "caja_desde": None, "caja_primera": None, "caja_s": 0.0, "conto_caja": False,
+                                      "zonas": set(), "fuera": False, "visto": t}
         nuevas = zonas - p["zonas"]
         if p["primera"] is None and zonas:
             # Si aparece en dos zonas a la vez no se sabe por dónde vino: no cuenta como entrada.
@@ -222,6 +222,9 @@ class Diario:
         if FILA in nuevas and p["fila_desde"] is None:
             p["fila_desde"] = t
         if CAJA in nuevas:
+            if not p["conto_caja"]:          # cada persona distinta que llega a la caja cuenta una vez (clientes atendidos)
+                p["conto_caja"] = True
+                self._sumar(t, a_caja=1)
             if p["fila_desde"] is not None and not p["espero"]:
                 espera = int(min(ESPERA_MAX_S, t - p["fila_desde"]))
                 if espera >= ESPERA_MIN_S:

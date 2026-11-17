@@ -123,6 +123,8 @@ ok(d.disco.leer("eventos", "caja-a") == {"clave": "caja-a", "tipo": "en_caja", "
    and d.disco.leer("eventos", "caja-c") is None and d.disco.leer("eventos", "caja-e")["segundos"] == 60,
    "alguien en la caja: desde cuándo y cuánto estuvo en total, si fueron 8 segundos o más")
 ok(tramo(d, T0)["esperas"] == 2, "volver a la caja no cuenta otra espera")
+ok(tramo(d, T0)["a_caja"] == 4,
+   "cada persona distinta que llegó a la caja cuenta una vez (clientes atendidos), aunque vuelva o pase de largo")
 ok(puente.Diario._numero("camara2") == 2 and puente.Diario._numero("cam12") == 12 and puente.Diario._numero("mostrador") == 0,
    "el número de la cámara sale de su nombre")
 
@@ -231,7 +233,7 @@ ok(u1 == "https://api.ejemplo.test/api/v1/comercios/caja/l1/entrar" and c1 == {"
    and u2 == "https://api.ejemplo.test/api/v1/comercios/caja/ojo" and h2 == {"X-Caja-Token": "tk1"},
    "por las dos rutas de la caja: el PIN y, con el token, lo que contó")
 ok(c2 == {"tramos": [{"desde": "2026-11-13T16:00:00+00:00", "entraron": 1, "en_salon": 1, "en_fila": 1, "esperas": 0,
-                      "espera_s": 0, "espera_max_s": 0, "esperas_largas": 0, "camaras": 0}],
+                      "espera_s": 0, "espera_max_s": 0, "esperas_largas": 0, "a_caja": 1, "camaras": 0}],
           "eventos": [{"clave": "caja-a", "tipo": "en_caja", "camara": 1, "desde": "2026-11-13T16:07:24+00:00",
                        "segundos": 36}]},
    "lo que viaja: el tramo con sus cuentas y el evento con su hora. Nada más")
