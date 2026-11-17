@@ -278,10 +278,24 @@ def _filtro_denoise() -> str:
     return v
 
 
-def capturar(url: str):
-    """Los cuadros de audio de la cámara, de a FRAME_BYTES, con ffmpeg. Corta
-    cuando ffmpeg se cae; main() lo vuelve a arrancar."""
-    cmd = ["ffmpeg", "-nostdin", "-loglevel", "error", "-rtsp_transport", "tcp", "-i", url, "-vn"]
+def _entrada() -> list:
+    """Los argumentos de ffmpeg para la FUENTE del audio: la cámara por RTSP
+    (OIDO_FUENTE=rtsp, por defecto) o el micrófono de una PC Windows
+    (OIDO_FUENTE=mic, con OIDO_MIC = el nombre del micrófono)."""
+    if os.environ.get("OIDO_FUENTE", "rtsp").strip().lower() == "mic":
+        mic = os.environ.get("OIDO_MIC", "").strip()
+        if not mic:
+            raise SystemExit("Falta OIDO_MIC: el nombre del micrófono. Listalos con:\n"
+                             "  ffmpeg -hide_banner -list_devices true -f dshow -i dummy")
+        return ["-f", "dshow", "-i", "audio=" + mic]
+    return ["-rtsp_transport", "tcp", "-i", url_rtsp()]
+
+
+def capturar():
+    """Los cuadros de audio, de a FRAME_BYTES, con ffmpeg (de la cámara o del
+    micrófono de la PC, según OIDO_FUENTE). Corta cuando ffmpeg se cae; main()
+    lo vuelve a arrancar."""
+    cmd = ["ffmpeg", "-nostdin", "-loglevel", "error"] + _entrada() + ["-vn"]
     filtro = _filtro_denoise()
     if filtro:
         cmd += ["-af", filtro]
@@ -312,22 +326,24 @@ def main() -> None:
     falta = [k for k in ("LOCAL_ID", "PIN") if not os.environ.get(k)]
     if falta and not solo:
         raise SystemExit("Falta en el .env: " + ", ".join(falta) + " (o poné MANDAR=no para probar sin mandar)")
-    if not os.environ.get("FRIGATE_CAMARA_IP"):
+    por_mic = os.environ.get("OIDO_FUENTE", "rtsp").strip().lower() == "mic"
+    if por_mic and not os.environ.get("OIDO_MIC"):
+        raise SystemExit("Falta OIDO_MIC: el nombre del micrófono (ffmpeg -list_devices true -f dshow -i dummy)")
+    if not por_mic and not os.environ.get("FRIGATE_CAMARA_IP"):
         raise SystemExit("Falta la cámara: corré ./instalar.sh --camara")
 
     caja = SoloOir() if solo else Caja(os.environ.get("API", "https://api-bis.autcala.com/api/v1"),
                                        os.environ["LOCAL_ID"], os.environ["PIN"])
     vad = webrtcvad.Vad(int(os.environ.get("OIDO_VAD", "2")))
     seg = Segmentador()
-    url = url_rtsp()
-    log.info("oído %s, por el canal %s", "de prueba: NO manda nada" if solo else "del local " + os.environ["LOCAL_ID"],
-             os.environ.get("OIDO_RUTA", "/stream1"))
+    fuente = "el micrófono de la PC" if por_mic else "el canal " + os.environ.get("OIDO_RUTA", "/stream1")
+    log.info("oído %s, por %s", "de prueba: NO manda nada" if solo else "del local " + os.environ["LOCAL_ID"], fuente)
     if _filtro_denoise():
         log.info("limpieza de ruido activada (OIDO_DENOISE): %s", _filtro_denoise())
     prox_latido = 0.0
     while True:
         try:
-            for cuadro in capturar(url):
+            for cuadro in capturar():
                 ahora = time.time()
                 tramo = seg.cuadro(cuadro, vad.is_speech(cuadro, RATE), ahora)
                 if tramo:

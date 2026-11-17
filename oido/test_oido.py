@@ -188,6 +188,29 @@ finally:
 ok("-af" in FUENTE and "_filtro_denoise()" in FUENTE.split("def capturar(")[1],
    "el filtro se aplica en la captura de ffmpeg, antes del detector de voz")
 
+print("\n== la fuente del audio (cámara o micrófono de la PC) ==")
+_g = {k: os.environ.get(k) for k in ("OIDO_FUENTE", "OIDO_MIC")}
+try:
+    os.environ.pop("OIDO_FUENTE", None); os.environ.pop("OIDO_MIC", None)
+    ent = oido._entrada()
+    ok(ent[:2] == ["-rtsp_transport", "tcp"] and ent[-1].startswith("rtsp://"),
+       "por defecto la fuente es la cámara (RTSP), como hasta ahora")
+    os.environ["OIDO_FUENTE"] = "mic"; os.environ["OIDO_MIC"] = "Microfono (Realtek)"
+    ok(oido._entrada() == ["-f", "dshow", "-i", "audio=Microfono (Realtek)"],
+       "con OIDO_FUENTE=mic toma el micrófono de la PC por dshow (Windows)")
+    os.environ.pop("OIDO_MIC", None)
+    aviso = True
+    try:
+        oido._entrada()
+    except SystemExit:
+        aviso = False
+    ok(not aviso, "mic sin OIDO_MIC avisa qué falta, no arranca a ciegas")
+finally:
+    for k, v in _g.items():
+        os.environ.pop(k, None) if v is None else os.environ.__setitem__(k, v)
+ok("OIDO_FUENTE" in FUENTE and "dshow" in FUENTE and "OIDO_MIC" in FUENTE,
+   "el mismo oído sirve para la cámara (en la Pi) y para el micrófono de una PC")
+
 if fallos:
     print("\nFALLARON %d:" % len(fallos))
     for f in fallos:
