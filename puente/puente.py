@@ -33,8 +33,15 @@ sale con el número de su cámara. `puerta` y `salon` van en una sola cámara.
 Cómo se cuenta:
 - ENTRÓ: una persona que apareció primero en `puerta` y después pisó `salon`,
   `fila` o `caja`. La que aparece adentro y termina en la puerta, salió.
+- PASÓ: cada persona distinta que pisa `salon`, una vez, venga de donde venga.
+  Es la circulación: si la zona incluye la vereda que se ve por el vidrio,
+  cuenta también a quien camina frente al local sin entrar.
 - ESPERA: lo que pasa entre que pisa `fila` y que llega a `caja`.
 - EN LA CAJA: lo que estuvo parada en `caja`, si fueron 8 segundos o más.
+- LLEGÓ A LA CAJA (a_caja): cada persona distinta, una vez, cuando suma
+  CAJA_MIN_S segundos (30 por defecto, en el .env) dentro de `caja`, en una
+  vez o en varias (vuelve por el vuelto). El que la cruza de pasada, o la
+  gente de la vereda si la zona alcanza el vidrio, no llega a sumarlos.
 - FUERA DE HORARIO: cualquier persona vista 10 segundos o más con el local
   cerrado, esté o no en una zona (también detrás del mostrador).
 
@@ -63,6 +70,16 @@ ESPERA_MIN_S = 5            # menos que esto no es una espera: pasó de largo
 ESPERA_LARGA_S = 300        # lo que el servidor llama espera larga: más de 5 minutos
 ESPERA_MAX_S = 7200
 CAJA_MIN_S = 8
+
+
+def _segundos_env(nombre: str, defecto: int) -> int:
+    try:
+        return max(1, int(os.environ.get(nombre, "") or defecto))
+    except ValueError:
+        return defecto
+
+
+A_CAJA_MIN_S = _segundos_env("CAJA_MIN_S", 30)   # lo que tiene que estar en la caja para contar como cliente
 FUERA_MIN_S = 10
 OLVIDO_S = 600              # una persona de la que Frigate no dijo más nada en 10 minutos se da por ida
 GUARDAR_DIAS = 8            # lo ya mandado se borra del disco a los 8 días (el servidor acepta hasta 7 de atraso)
@@ -147,7 +164,7 @@ class Disco:
 # ── La cuenta ───────────────────────────────────────────────────────────────
 
 TRAMO_VACIO = {"entraron": 0, "en_salon": 0, "en_fila": 0, "esperas": 0, "espera_s": 0, "espera_max_s": 0,
-               "esperas_largas": 0, "a_caja": 0, "camaras": 0}
+               "esperas_largas": 0, "a_caja": 0, "pasaron": 0, "camaras": 0}
 
 
 class Diario:
@@ -213,7 +230,7 @@ class Diario:
             p = self.personas[pid] = {"camara": d.get("camera") or "", "inicio": float(d.get("start_time") or t),
                                       "primera": None, "entro": False, "fila_desde": None, "espero": False,
                                       "caja_desde": None, "caja_primera": None, "caja_s": 0.0, "conto_caja": False,
-                                      "zonas": set(), "fuera": False, "visto": t}
+                                      "conto_salon": False, "zonas": set(), "fuera": False, "visto": t}
         nuevas = zonas - p["zonas"]
         if p["primera"] is None and zonas:
             # Si aparece en dos zonas a la vez no se sabe por dónde vino: no cuenta como entrada.
@@ -221,12 +238,12 @@ class Diario:
         if not p["entro"] and p["primera"] == PUERTA and zonas & ADENTRO:
             p["entro"] = True
             self._sumar(t, entraron=1)
+        if SALON in zonas and not p["conto_salon"]:   # la circulación: cada persona distinta que pasa, una vez
+            p["conto_salon"] = True
+            self._sumar(t, pasaron=1)
         if FILA in nuevas and p["fila_desde"] is None:
             p["fila_desde"] = t
         if CAJA in nuevas:
-            if not p["conto_caja"]:          # cada persona distinta que llega a la caja cuenta una vez (clientes atendidos)
-                p["conto_caja"] = True
-                self._sumar(t, a_caja=1)
             if p["fila_desde"] is not None and not p["espero"]:
                 espera = int(min(ESPERA_MAX_S, t - p["fila_desde"]))
                 if espera >= ESPERA_MIN_S:
@@ -246,6 +263,7 @@ class Diario:
                 self.disco.guardar("eventos", f"caja-{pid}", {
                     "clave": f"caja-{pid}"[:80], "tipo": "en_caja", "camara": self._numero(p["camara"]),
                     "desde": hora_de(p["caja_primera"]), "segundos": int(p["caja_s"])}, t)
+        self._contar_caja(p, t)
         if cerrado(t, self.abre, self.cierra) and t - p["inicio"] >= FUERA_MIN_S:
             p["fuera"] = True
         if p["fuera"] and (fin or not self.disco.leer("eventos", f"fuera-{pid}")):
@@ -256,6 +274,16 @@ class Diario:
         if fin:
             self.personas.pop(pid, None)
         self._presentes(t)
+
+    def _contar_caja(self, p: dict, t: float) -> None:
+        """Cliente en la caja: la persona cuenta una vez cuando suma A_CAJA_MIN_S
+        dentro de `caja` (lo de antes más lo que lleva ahora, si sigue ahí)."""
+        if p["conto_caja"]:
+            return
+        total = p["caja_s"] + (t - p["caja_desde"] if p["caja_desde"] is not None else 0.0)
+        if total >= A_CAJA_MIN_S:
+            p["conto_caja"] = True
+            self._sumar(t, a_caja=1)
 
     @staticmethod
     def _numero(camara: str) -> int:
@@ -274,6 +302,8 @@ class Diario:
     def _minuto(self, ahora: float) -> None:
         for pid in [k for k, p in self.personas.items() if ahora - p["visto"] > OLVIDO_S]:
             self.personas.pop(pid, None)
+        for p in self.personas.values():      # quien sigue quieto pagando no manda avisos: se mira acá
+            self._contar_caja(p, ahora)
         clave, tr = self._tramo(ahora)
         tr["camaras"] = sum(1 for viva in self.camaras.values() if viva)
         self.disco.guardar("tramos", clave, tr, ahora)

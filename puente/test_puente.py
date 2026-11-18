@@ -98,6 +98,9 @@ ok(tramo(d, T0)["entraron"] == 1 and set(d.personas) == {"a", "c", "e"},
    "si aparece en dos zonas a la vez no se sabe por dónde vino; lo que no es una persona, o Frigate duda, se ignora")
 ok(tramo(d, T0)["en_salon"] == 2 and tramo(d, T0)["en_fila"] == 1,
    "cuántos hubo a la vez en el salón y en la fila (los del otro lado del mostrador no cuentan)")
+ok(tramo(d, T0)["pasaron"] == 3,
+   "pasaron (la circulación): cada persona distinta que pisó el salón cuenta una vez, haya entrado o no; "
+   "lo que no es una persona, o Frigate duda, no")
 
 print("\n== la espera y la caja ==")
 d = nuevo()
@@ -123,8 +126,13 @@ ok(d.disco.leer("eventos", "caja-a") == {"clave": "caja-a", "tipo": "en_caja", "
    and d.disco.leer("eventos", "caja-c") is None and d.disco.leer("eventos", "caja-e")["segundos"] == 60,
    "alguien en la caja: desde cuándo y cuánto estuvo en total, si fueron 8 segundos o más")
 ok(tramo(d, T0)["esperas"] == 2, "volver a la caja no cuenta otra espera")
-ok(tramo(d, T0)["a_caja"] == 4,
-   "cada persona distinta que llegó a la caja cuenta una vez (clientes atendidos), aunque vuelva o pase de largo")
+ok(puente.A_CAJA_MIN_S == 30 and tramo(d, T0)["a_caja"] == 2,
+   "cliente en la caja es quien suma 30 segundos ahí: a (30 s) y e (60 s); c estuvo 4 s, pasó de largo: no")
+d.minuto(T0 + 455)
+ok(tramo(d, T0)["a_caja"] == 3,
+   "b sigue quieto pagando hace 45 s sin que Frigate avise nada: lo cuenta la vuelta de cada minuto")
+d.minuto(T0 + 456)
+ok(tramo(d, T0)["a_caja"] == 3, "y cada persona cuenta una sola vez, aunque vuelva por el vuelto")
 ok(puente.Diario._numero("camara2") == 2 and puente.Diario._numero("cam12") == 12 and puente.Diario._numero("mostrador") == 0,
    "el número de la cámara sale de su nombre")
 
@@ -207,8 +215,9 @@ print("\n== un tramo viejo en el disco (de una versión sin a_caja) ==")
 d = nuevo()
 d.disco.guardar("tramos", puente.tramo_de(T0), {"entraron": 2, "camaras": 1}, T0)   # como lo dejó una versión vieja
 d.aviso(aviso("x", T0 + 5, ["caja"], "new"), T0 + 5)
-ok(tramo(d, T0)["a_caja"] == 1 and tramo(d, T0)["entraron"] == 2,
-   "un tramo guardado por una versión vieja (sin a_caja) no rompe: el campo nuevo arranca en 0 y suma")
+d.aviso(aviso("x", T0 + 40, [], "end"), T0 + 40)
+ok(tramo(d, T0)["a_caja"] == 1 and tramo(d, T0)["entraron"] == 2 and tramo(d, T0)["pasaron"] == 0,
+   "un tramo guardado por una versión vieja (sin a_caja ni pasaron) no rompe: los campos nuevos arrancan en 0 y suman")
 
 print("\n== mandar ==")
 
@@ -240,7 +249,8 @@ ok(u1 == "https://api.ejemplo.test/api/v1/comercios/caja/l1/entrar" and c1 == {"
    and u2 == "https://api.ejemplo.test/api/v1/comercios/caja/ojo" and h2 == {"X-Caja-Token": "tk1"},
    "por las dos rutas de la caja: el PIN y, con el token, lo que contó")
 ok(c2 == {"tramos": [{"desde": "2026-11-13T16:00:00+00:00", "entraron": 1, "en_salon": 1, "en_fila": 1, "esperas": 0,
-                      "espera_s": 0, "espera_max_s": 0, "esperas_largas": 0, "a_caja": 1, "camaras": 0}],
+                      "espera_s": 0, "espera_max_s": 0, "esperas_largas": 0, "a_caja": 1, "pasaron": 0,
+                      "camaras": 0}],
           "eventos": [{"clave": "caja-a", "tipo": "en_caja", "camara": 1, "desde": "2026-11-13T16:07:24+00:00",
                        "segundos": 36}]},
    "lo que viaja: el tramo con sus cuentas y el evento con su hora. Nada más")

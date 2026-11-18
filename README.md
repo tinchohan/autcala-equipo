@@ -223,9 +223,11 @@ probar con y sin, y comparar lo que transcribe.
 
 Una vez por minuto, al servidor de Autcala y con el PIN de la caja:
 
-- **Tramos de 15 minutos**: cuántas personas entraron, cuántas hubo a la vez
-  en el salón y en la fila, cuántas llegaron a la caja y cuánto tardaron
-  desde que empezaron a pedir, y cuántas cámaras está viendo.
+- **Tramos de 15 minutos**: cuántas personas entraron, cuántas pasaron por el
+  salón (la circulación, que puede incluir la vereda que se ve por el vidrio),
+  cuántas hubo a la vez en el salón y en la fila, cuántas llegaron a la caja
+  (las que estuvieron ahí `CAJA_MIN_S` segundos o más) y cuánto tardaron desde
+  que empezaron a pedir, y cuántas cámaras está viendo.
 - **Eventos con su hora**: alguien parado en la caja, y alguien en el local
   cuando está cerrado.
 
@@ -233,7 +235,8 @@ Una vez por minuto, al servidor de Autcala y con el PIN de la caja:
 {
   "tramos": [
     {"desde": "2026-11-13T16:00:00+00:00", "entraron": 7, "en_salon": 5, "en_fila": 3,
-     "esperas": 4, "espera_s": 520, "espera_max_s": 310, "esperas_largas": 1, "camaras": 4}
+     "esperas": 4, "espera_s": 520, "espera_max_s": 310, "esperas_largas": 1, "a_caja": 6,
+     "pasaron": 140, "camaras": 4}
   ],
   "eventos": [
     {"clave": "caja-1731514320.52-ab12cd", "tipo": "en_caja", "camara": 1,
