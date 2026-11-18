@@ -142,7 +142,9 @@ $envPath = Join-Path $DIR ".env"
   "OIDO_DENOISE=no"
   "API=$API"
 ) -join "`r`n" | Set-Content -Path $envPath -Encoding UTF8
-icacls $envPath /inheritance:r /grant:r "$($env:USERNAME):(R,W)" "Administrators:(F)" | Out-Null
+# El grupo de administradores por su SID (*S-1-5-32-544), independiente del
+# idioma de Windows ("Administrators"/"Administradores").
+icacls $envPath /inheritance:r /grant:r "$($env:USERNAME):(R,W)" "*S-1-5-32-544:(F)" | Out-Null
 
 # 8. El envoltorio que carga el .env y corre el oído (oculto, con registro) ---
 # Se le incrusta la ruta real de Python para que la tarea no dependa del PATH
@@ -161,22 +163,49 @@ $pyCall 2>&1 | Out-File -FilePath "`$PSScriptRoot\oido.log" -Append -Encoding UT
 "@
 Set-Content -Path (Join-Path $DIR "correr.ps1") -Value $correr -Encoding UTF8
 
-# 9. La Tarea Programada (al iniciar sesión, oculta, se reinicia si cae) ------
-$accion   = New-ScheduledTaskAction -Execute "powershell.exe" `
-              -Argument "-WindowStyle Hidden -NonInteractive -ExecutionPolicy Bypass -File `"$DIR\correr.ps1`""
-$trigger  = New-ScheduledTaskTrigger -AtLogOn
-$settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries `
-              -RestartCount 999 -RestartInterval (New-TimeSpan -Minutes 1) `
-              -ExecutionTimeLimit ([TimeSpan]::Zero) -MultipleInstances IgnoreNew
-Register-ScheduledTask -TaskName $NOMBRE -Action $accion -Trigger $trigger -Settings $settings `
-              -RunLevel Limited -Force | Out-Null
-Start-ScheduledTask -TaskName $NOMBRE
+# 9. Arranque automático al iniciar sesión ----------------------------------
+# Primero intenta una Tarea Programada (se reinicia sola si cae). Si el usuario
+# no es administrador, Windows niega el registro: ahí caemos a un atajo en la
+# carpeta de Inicio, que no necesita permisos.
+$correrFile = Join-Path $DIR "correr.ps1"
+$arg = "-WindowStyle Hidden -NonInteractive -ExecutionPolicy Bypass -File `"$correrFile`""
+$porTarea = $false
+try {
+  $accion   = New-ScheduledTaskAction -Execute "powershell.exe" -Argument $arg
+  $trigger  = New-ScheduledTaskTrigger -AtLogOn
+  $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries `
+                -RestartCount 999 -RestartInterval (New-TimeSpan -Minutes 1) `
+                -ExecutionTimeLimit ([TimeSpan]::Zero) -MultipleInstances IgnoreNew
+  Register-ScheduledTask -TaskName $NOMBRE -Action $accion -Trigger $trigger -Settings $settings `
+                -RunLevel Limited -Force -ErrorAction Stop | Out-Null
+  Start-ScheduledTask -TaskName $NOMBRE
+  $porTarea = $true
+} catch {
+  Write-Host "No pude registrar la Tarea Programada ($($_.Exception.Message))." -ForegroundColor DarkYellow
+  Write-Host "Uso el arranque por la carpeta de Inicio (no necesita administrador)." -ForegroundColor DarkYellow
+  $lnk = Join-Path ([Environment]::GetFolderPath('Startup')) "AutcalaOido.lnk"
+  $ws = New-Object -ComObject WScript.Shell
+  $sc = $ws.CreateShortcut($lnk)
+  $sc.TargetPath = "powershell.exe"
+  $sc.Arguments  = $arg
+  $sc.WorkingDirectory = $DIR
+  $sc.WindowStyle = 7  # minimizado
+  $sc.Save()
+  # Y lo arrancamos ahora (la tarea lo habría hecho sola)
+  Start-Process powershell -WindowStyle Hidden -ArgumentList $arg
+}
 
 Write-Host ""
 Write-Host "Listo. El oído corre en segundo plano y arranca solo al iniciar sesión." -ForegroundColor Green
 Write-Host "  Carpeta:   $DIR"
 Write-Host "  Registro:  $DIR\oido.log   (si algo falla, mirá acá)"
-Write-Host "  Frenarlo:  Unregister-ScheduledTask -TaskName $NOMBRE -Confirm:`$false"
+if ($porTarea) {
+  Write-Host "  Arranque:  Tarea Programada '$NOMBRE'"
+  Write-Host "  Frenarlo:  Unregister-ScheduledTask -TaskName $NOMBRE -Confirm:`$false"
+} else {
+  Write-Host "  Arranque:  atajo en la carpeta de Inicio (AutcalaOido.lnk)"
+  Write-Host "  Frenarlo:  cerrá el proceso de python y borrá el atajo de Inicio (shell:startup)"
+}
 Write-Host ""
 Write-Host "Dale unos segundos y fijate el registro para confirmar que arrancó:" -ForegroundColor Cyan
 Write-Host "  Get-Content `"$DIR\oido.log`" -Tail 10 -Wait"
