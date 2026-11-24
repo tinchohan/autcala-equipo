@@ -1,9 +1,15 @@
 # El equipo del local: Frigate mira las cámaras, el puente cuenta y
-# manda. Ver README.md. Se levanta con:  docker compose up -d
+# manda, y el oído manda el audio del micrófono. Ver README.md. Se levanta
+# con:  docker compose up -d
+#
+# Las cámaras (mosquitto, frigate y el puente) van en el perfil «camaras»: el
+# .env lo prende con COMPOSE_PROFILES=camaras. Una Pi que es sólo el oído (un
+# micrófono USB, sin el AI HAT+) lo deja vacío y levanta nada más que el oído.
 services:
   # El correo interno por donde Frigate le avisa al puente. No se abre a la red.
   mosquitto:
     image: eclipse-mosquitto:2
+    profiles: [camaras]
     restart: unless-stopped
     volumes:
       - ./mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
@@ -11,6 +17,7 @@ services:
   frigate:
     container_name: frigate
     image: ghcr.io/blakeblackshear/frigate:stable
+    profiles: [camaras]
     privileged: true
     restart: unless-stopped
     stop_grace_period: 30s
@@ -35,6 +42,7 @@ services:
 
   puente:
     build: ./puente
+    profiles: [camaras]
     restart: unless-stopped
     depends_on:
       - mosquitto
@@ -45,10 +53,12 @@ services:
     volumes:
       - ./datos:/datos
 
-  # El oído: el audio de la cámara al oído del servidor. Sólo trabaja si en el
-  # .env está OIDO=si; si no, queda quieto (para no chocar con el micrófono de
-  # la PC del local).
+  # El oído: el audio de un micrófono USB (o de la cámara) al oído del
+  # servidor. Sólo trabaja si en el .env está OIDO=si; si no, queda quieto.
   oido:
     build: ./oido
     restart: unless-stopped
     env_file: .env
+    # Las tarjetas de sonido de la Pi, para el micrófono USB (OIDO_FUENTE=usb).
+    devices:
+      - /dev/snd:/dev/snd

@@ -4,6 +4,7 @@
 #
 #     ./instalar.sh                 instala Docker si falta, prepara todo y lo levanta
 #     ./instalar.sh --configurar    pregunta el link de la caja, el PIN, el horario y el grabador
+#     ./instalar.sh --oido          deja la Pi escuchando con un micrófono USB (no hace falta el AI HAT+)
 #     ./instalar.sh --camara        usa una cámara sola por su dirección RTSP (una Tapo, etc.)
 #     ./instalar.sh --controlador   instala el controlador del Hailo que pide Frigate
 #     ./instalar.sh --remoto        pone este equipo en Tailscale, para entrarle desde otro lado
@@ -34,6 +35,7 @@ corta() { printf '\n%s\n' "$*" >&2; exit 1; }
 CONTROLADOR=no
 CONFIGURAR=no
 CAMARA=no
+OIDO_USB=no
 REMOTO=no
 SOLO_ESTADO=no
 for arg in "$@"; do
@@ -41,6 +43,7 @@ for arg in "$@"; do
     --controlador) CONTROLADOR=si ;;
     --configurar) CONFIGURAR=si ;;
     --camara) CAMARA=si ;;
+    --oido) OIDO_USB=si ;;
     --remoto) REMOTO=si ;;
     --estado) SOLO_ESTADO=si ;;
     -h|--help) sed -n '2,22p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
@@ -85,6 +88,35 @@ codificar() {  # para que una clave con @ : / # no rompa la dirección de la cá
 
 hora_bien() { [[ "$1" =~ ^([01]?[0-9]|2[0-3]):[0-5][0-9]$ ]]; }
 
+mic_usb() {  # el primer micrófono USB enchufado, como lo pide el oído: plughw:CARD=<nombre>,DEV=0
+  local n
+  n="$(sed -nE 's/^ *[0-9]+ \[([^ ]+) *\]: *USB-Audio.*/\1/p' /proc/asound/cards 2>/dev/null | head -n 1)"
+  if [ -n "$n" ]; then printf 'plughw:CARD=%s,DEV=0' "$n"; fi
+}
+
+mic_usb_nombre() {  # cómo se llama ese micrófono, para mostrarlo
+  sed -nE 's/^ *[0-9]+ \[[^ ]+ *\]: *USB-Audio - (.*)/\1/p' /proc/asound/cards 2>/dev/null | head -n 1
+}
+
+local_y_pin() {  # pregunta el link de la caja y el PIN (Enter deja lo que estaba)
+  local enlace id pin
+  read -r -p "Link de la caja [$(actual LOCAL_ID)]: " enlace
+  if [ -n "$enlace" ]; then
+    id="$(printf '%s' "$enlace" | grep -oiE '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}' | tail -n 1 || true)"
+    [ -n "$id" ] || corta "No encontré el local en ese link. Tiene que ser como https://dashboard.autcala.com/comercios/caja/xxxxxxxx-xxxx-…"
+    poner LOCAL_ID "$id"
+  fi
+  [ -n "$(actual LOCAL_ID)" ] || corta "Sin el link de la caja no puedo seguir."
+
+  read -r -s -p "PIN de la caja (no se ve al escribirlo)$([ -n "$(actual PIN)" ] && echo ' [el que estaba]'): " pin
+  echo
+  if [ -n "$pin" ]; then
+    [[ "$pin" =~ ^[0-9]{4,8}$ ]] || corta "El PIN son de 4 a 8 números."
+    poner PIN "$pin"
+  fi
+  [ -n "$(actual PIN)" ] || corta "Sin el PIN no puedo seguir."
+}
+
 estado() {
   dice "Cómo está el equipo"
   if [ "$(uname -m)" = "aarch64" ]; then bien "sistema de 64 bits ($SISTEMA)"; else falta "esto no es una Raspberry Pi de 64 bits ($(uname -m))"; fi
@@ -121,6 +153,13 @@ estado() {
     ts="$(tailscale ip -4 2>/dev/null | head -n 1 || true)"
     if [ -n "$ts" ]; then bien "en Tailscale, como $ts"; else falta "Tailscale está instalado pero sin entrar (./instalar.sh --remoto)"; fi
   fi
+  if [ "$(actual OIDO)" = "si" ]; then
+    if [ "$(actual OIDO_FUENTE)" = "usb" ]; then
+      if [ -n "$(mic_usb)" ]; then bien "el oído escucha por el micrófono USB: $(mic_usb_nombre)"; else falta "el micrófono USB (enchufalo: el oído lo busca solo cada 30 s)"; fi
+    else
+      bien "el oído escucha por: $(actual OIDO_FUENTE)"
+    fi
+  fi
   if command -v docker >/dev/null 2>&1 && [ -n "$(docker compose ps -q 2>/dev/null)" ]; then
     docker compose ps --format '  {{.Service}}: {{.Status}}'
   else
@@ -132,23 +171,9 @@ configurar() {
   dice "Configurar este equipo para un local"
   echo "Hacen falta el link de la caja del local (está en el panel de Autcala,"
   echo "«Link de la caja») y su PIN. Enter deja lo que ya estaba [entre corchetes]."
-  local enlace id pin abre cierra ip puerto usuario clave r
+  local abre cierra ip puerto usuario clave r
 
-  read -r -p "Link de la caja [$(actual LOCAL_ID)]: " enlace
-  if [ -n "$enlace" ]; then
-    id="$(printf '%s' "$enlace" | grep -oiE '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}' | tail -n 1 || true)"
-    [ -n "$id" ] || corta "No encontré el local en ese link. Tiene que ser como https://dashboard.autcala.com/comercios/caja/xxxxxxxx-xxxx-…"
-    poner LOCAL_ID "$id"
-  fi
-  [ -n "$(actual LOCAL_ID)" ] || corta "Sin el link de la caja no puedo seguir."
-
-  read -r -s -p "PIN de la caja (no se ve al escribirlo)$([ -n "$(actual PIN)" ] && echo ' [el que estaba]'): " pin
-  echo
-  if [ -n "$pin" ]; then
-    [[ "$pin" =~ ^[0-9]{4,8}$ ]] || corta "El PIN son de 4 a 8 números."
-    poner PIN "$pin"
-  fi
-  [ -n "$(actual PIN)" ] || corta "Sin el PIN no puedo seguir."
+  local_y_pin
 
   echo
   echo "El horario del local, para avisar si se ve a alguien con el local cerrado."
@@ -194,6 +219,37 @@ configurar() {
 
   echo
   echo "Mandando, lo que cuenta este equipo aparece en el tablero del dueño."
+  read -r -p "¿Empieza a mandar al servidor? (s/n) [$([ "$(actual MANDAR)" = "si" ] && echo s || echo n)]: " r
+  case "$r" in
+    s) poner MANDAR si ;;
+    n) poner MANDAR no ;;
+    "") ;;
+    *) corta "Era s o n." ;;
+  esac
+  chmod 600 .env
+  bien "guardado"
+}
+
+oido_usb() {
+  dice "El oído, con un micrófono USB"
+  echo "La Pi escucha el mostrador con un micrófono USB y manda el audio al oído"
+  echo "del servidor, igual que la tablet: de corrido, en tramos de 45 segundos."
+  echo "El audio no se guarda en la Pi. Hacen falta el link de la caja y su PIN."
+  echo "Enter deja lo que ya estaba [entre corchetes]."
+  local_y_pin
+  echo
+  if [ -n "$(mic_usb)" ]; then
+    bien "encontré el micrófono: $(mic_usb_nombre)"
+  else
+    falta "no veo ningún micrófono USB. Enchufalo cuando quieras: el oído lo busca solo cada 30 segundos."
+  fi
+  poner OIDO si
+  poner OIDO_FUENTE usb
+  local r
+  echo
+  echo "Mandando, el audio va al servidor y sale en el resumen de cada ticket. Sin"
+  echo "mandar, la Pi escucha y sólo escribe en su registro cuánto oyó (para probar)."
+  echo "OJO: si la tablet del mostrador también está escuchando, apagala antes."
   read -r -p "¿Empieza a mandar al servidor? (s/n) [$([ "$(actual MANDAR)" = "si" ] && echo s || echo n)]: " r
   case "$r" in
     s) poner MANDAR si ;;
@@ -376,17 +432,8 @@ fi
 REINICIAR_FRIGATE=no
 if [ "$CONFIGURAR" = si ]; then configurar; fi
 if [ "$CAMARA" = si ]; then camara; fi
+if [ "$OIDO_USB" = si ]; then oido_usb; fi
 
-if [ ! -e /dev/hailo0 ]; then
-  estado
-  corta "Sin el Hailo, Frigate no arranca. Si la cinta está bien puesta: ./instalar.sh --controlador"
-fi
-
-# ── 4. Levantar ─────────────────────────────────────────────────────────────
-dice "Bajo Frigate y armo el puente (la primera vez tarda varios minutos)"
-# La imagen de Frigate es grande: si la conexión se corta a mitad, Docker ya
-# guardó lo que bajó, así que reintentar avanza desde ahí. Por eso cada bajada
-# va en un bucle, y un timeout no frena todo el instalador.
 reintentar() {  # reintentar "qué" comando...: hasta 10 veces, 5 s entre medio
   local que="$1"; shift
   local n=0
@@ -397,8 +444,42 @@ reintentar() {  # reintentar "qué" comando...: hasta 10 veces, 5 s entre medio
     sleep 5
   done
 }
+
+if [ ! -e /dev/hailo0 ]; then
+  if [ "$(actual OIDO)" != "si" ]; then
+    estado
+    corta "Sin el Hailo, Frigate no arranca. Si la cinta está bien puesta: ./instalar.sh --controlador. Para usar esta Pi sólo como oído, con un micrófono USB: ./instalar.sh --oido"
+  fi
+  # ── Sin el AI HAT+: sólo el oído ──────────────────────────────────────────
+  poner COMPOSE_PROFILES ""
+  dice "Armo el oído (la primera vez tarda unos minutos)"
+  reintentar "armar el oído" $DOCKER compose build oido
+  $DOCKER compose up -d --remove-orphans || dice "Algo falló al levantar. Mirá: $DOCKER compose logs oido"
+  estado
+  dice "Listo. Lo que sigue:"
+  cat <<FIN
+  Lo que va oyendo y mandando, cada 45 segundos:
+       $DOCKER compose logs -f oido
+  (con MANDAR=no dice cuánto oyó y a qué volumen, sin mandar nada)
+
+  Al prender la Pi arranca sola. Si se desenchufa el micrófono, lo vuelve a
+  buscar cada 30 segundos.
+
+  Para cambiar el local, el PIN o si manda:  ./instalar.sh --oido
+  Para actualizar más adelante:             git pull && ./instalar.sh
+FIN
+  exit 0
+fi
+[ -n "$(actual COMPOSE_PROFILES)" ] || poner COMPOSE_PROFILES camaras
+
+# ── 4. Levantar ─────────────────────────────────────────────────────────────
+dice "Bajo Frigate y armo el puente (la primera vez tarda varios minutos)"
+# La imagen de Frigate es grande: si la conexión se corta a mitad, Docker ya
+# guardó lo que bajó, así que reintentar avanza desde ahí. Por eso cada bajada
+# va en un bucle, y un timeout no frena todo el instalador.
 reintentar "bajar Frigate" $DOCKER compose pull mosquitto frigate
 reintentar "armar el puente" $DOCKER compose build puente
+reintentar "armar el oído" $DOCKER compose build oido
 $DOCKER compose up -d || dice "Algo falló al levantar. Mirá el estado de abajo y, si Frigate no quedó andando: $DOCKER compose logs frigate"
 if [ "$REINICIAR_FRIGATE" = si ]; then $DOCKER compose restart frigate; fi
 

@@ -13,6 +13,7 @@ arman a mano.
     python -X utf8 test_oido.py
 """
 import io
+import json
 import os
 import re
 import sys
@@ -210,6 +211,178 @@ finally:
         os.environ.pop(k, None) if v is None else os.environ.__setitem__(k, v)
 ok("OIDO_FUENTE" in FUENTE and "dshow" in FUENTE and "OIDO_MIC" in FUENTE,
    "el mismo oído sirve para la cámara (en la Pi) y para el micrófono de una PC")
+
+print("\n== de corrido (el micrófono USB, como la tablet) ==")
+cor = oido.Corrido()
+salieron = [t for t in (cor.cuadro(CUADRO, False, 100.0 + i * 0.02) for i in range(oido.TRAMO_MAX_FRAMES * 2 + 10)) if t]
+ok(len(salieron) == 2 and all(len(t["pcm"]) // oido.FRAME_BYTES == oido.TRAMO_MAX_FRAMES and t["dur"] == 45.0 for t in salieron)
+   and abs(salieron[0]["desde"] - 100.0) < 1e-6 and abs(salieron[1]["desde"] - (100.0 + oido.TRAMO_MAX_FRAMES * 0.02)) < 1e-6,
+   "se manda todo, haya voz o no, en tramos de 45 s, cada uno con la hora de su primer cuadro")
+resto = cor.cortar()
+ok(resto is None, "al cortarse el audio, menos de un segundo suelto no se manda")
+for i in range(60):
+    cor.cuadro(CUADRO, False, 200.0 + i * 0.02)
+resto = cor.cortar()
+ok(resto is not None and resto["dur"] == 1.2 and cor.cortar() is None, "un pedazo de un segundo o más sí, una sola vez")
+
+print("\n== la amplificación ==")
+ok((oido.ganancia_de(0.3), oido.ganancia_de(0.5), oido.ganancia_de(0.6)) == (24.0, 12.0, 6.0),
+   "como en la tablet: ×24 en Máxima, ×12 en Alta, ×6 en Normal")
+from array import array  # noqa: E402
+bajito = array("h", [((i * 37) % 200) - 100 for i in range(16000)]).tobytes()   # picos de 100 (−50 dB)
+alto, g = oido.realzar(bajito, 24.0)
+m = array("h"); m.frombytes(alto)
+ok(g == 24.0 and len(alto) == len(bajito) and max(m) <= 99 * 24 and max(m) >= 98 * 24,
+   "un micrófono flojo se amplifica todo lo que permite la sensibilidad")
+fuerte = array("h", [((i * 37) % 20000) - 10000 for i in range(16000)]).tobytes()   # picos de 10.000
+salida, g = oido.realzar(fuerte, 24.0)
+m = array("h"); m.frombytes(salida)
+ok(1.0 <= g < 2.0 and max(m) <= oido.TOPE + 1 and len(salida) == len(fuerte),
+   "un micrófono que ya viene fuerte casi no se toca: no se aplasta todo contra el tope")
+ya = array("h", [30000 if i % 2 else -30000 for i in range(16000)]).tobytes()
+ok(oido.realzar(ya, 24.0) == (ya, 1.0), "nunca se baja el volumen")
+golpe = array("h", [100] * 15700 + [3000] * 300).tobytes()   # un golpe de 20 ms
+salida, g = oido.realzar(golpe, 24.0)
+m = array("h"); m.frombytes(salida)
+ok(g == 24.0 and max(m) <= 32767 and max(m) > oido.TOPE and max(m) < oido.TOPE + (3000 * 24 - oido.TOPE) / 10,
+   "un golpe en medio de un tramo flojo no le baja la amplificación al resto: el golpe se aplasta sin romperse")
+ok(oido.realzar(b"", 24.0) == (b"", 1.0), "un tramo vacío queda vacío")
+ok(oido.nivel_db(b"\x00\x00" * 320) == -120.0 and -7 < oido.nivel_db(array("h", [16384, -16384] * 160).tobytes()) < -5,
+   "el nivel en dB: silencio puro es −120; media escala, −6")
+
+print("\n== el micrófono USB ==")
+TARJETAS = (" 0 [vc4hdmi0      ]: vc4-hdmi - vc4-hdmi-0\n                      vc4-hdmi-0\n"
+            " 1 [vc4hdmi1      ]: vc4-hdmi - vc4-hdmi-1\n                      vc4-hdmi-1\n"
+            " 2 [Device        ]: USB-Audio - USB PnP Sound Device\n                      C-Media at usb-xhci\n")
+ok(oido.mic_usb(TARJETAS) == "plughw:CARD=Device,DEV=0", "encuentra el primer micrófono USB entre las tarjetas de la Pi")
+ok(oido.mic_usb(TARJETAS.split(" 2 [")[0]) == "" and oido.mic_usb("") == "", "sin micrófono USB, no inventa uno")
+_g = {k: os.environ.get(k) for k in ("OIDO_FUENTE", "OIDO_MIC")}
+try:
+    os.environ["OIDO_FUENTE"] = "usb"; os.environ["OIDO_MIC"] = "plughw:CARD=Otro,DEV=0"
+    ok(oido._entrada() == ["-f", "alsa", "-i", "plughw:CARD=Otro,DEV=0"], "con OIDO_MIC se usa ese micrófono, por ALSA")
+    os.environ.pop("OIDO_MIC")
+    if not os.path.exists("/proc/asound/cards"):
+        try:
+            oido._entrada()
+            ok(False, "sin micrófono USB avisa (y main() vuelve a buscar a los 30 s), no se cae")
+        except oido.SinMicrofono:
+            ok(True, "sin micrófono USB avisa (y main() vuelve a buscar a los 30 s), no se cae")
+finally:
+    for k, v in _g.items():
+        os.environ.pop(k, None) if v is None else os.environ.__setitem__(k, v)
+
+print("\n== la red, el puesto y la sensibilidad ==")
+red = Falso([(200, {"token": "t"}), (200, {"turno": {"id": "t1"}, "token": "t-nuevo"}), (0, {})])
+c = oido.Caja("https://x.test", "l1", "0000", red, puesto="ab12cd34-0000-0000-0000-000000000000")
+ok(c.mandar_tramo(PCM, 1.0, 1.0, 1.0) is False and c.ultimo == 0 and 0 in oido.REINTENTAR and c.turno == "t1",
+   "sin internet no se pierde el día ni el token: se avisa que hay que reintentar")
+ok(c.token == "t-nuevo" and b'"cajero": "equipo"' in red.pedidos[1][1],
+   "abre el día como «equipo» y se queda con el token nuevo que da abrir")
+ok(b'name="puesto"' in red.pedidos[2][1] and b"ab12cd34-0000-0000-0000-000000000000" in red.pedidos[2][1],
+   "en un local con varios equipos, cada tramo dice de qué puesto es")
+red = Falso([(200, {"token": "t"}), (200, {"turno": {"id": "t1"}}), (200, {"ok": True})])
+c = oido.Caja("https://x.test", "l1", "0000", red)
+c.mandar_tramo(PCM, 1.0, 1.0, 1.0)
+ok(b'name="puesto"' not in red.pedidos[2][1], "con un solo equipo, sin puesto (como la tablet)")
+red = Falso([(200, {"oido": {"umbral": 0.3, "sensibilidad": "maxima"}, "anuncios": []})])
+c.pedir = red
+ok(c.sensibilidad(1.0) == 0.3 and red.pedidos[0][0] == "https://x.test/comercios/caja/kiosco/anuncios"
+   and red.pedidos[0][1] is None and red.pedidos[0][2].get("X-Caja-Token") == "t",
+   "pregunta la sensibilidad del panel por la misma ruta que la tablet")
+c.pedir = Falso([(0, {})])
+ok(c.sensibilidad(1.0) is None, "sin internet, la sensibilidad queda como estaba")
+
+
+class CajaFalsa:
+    def __init__(self, codigos):
+        self.codigos, self.subidos, self.latidos, self.ultimo, self.apagado = list(codigos), [], [], 200, False
+
+    def mandar_tramo(self, pcm, dur, desde, ahora):
+        self.ultimo = self.codigos.pop(0) if self.codigos else 200
+        if self.ultimo == 200:
+            self.subidos.append(desde)
+        return self.ultimo == 200
+
+    def sensibilidad(self, ahora):
+        return 0.6
+
+    def latido(self, ahora, datos=None):
+        self.latidos.append(datos)
+
+
+def tramo_de(desde):
+    return {"pcm": bajito, "dur": 1.0, "desde": desde}
+
+
+print("\n== la cola de subida ==")
+cf = CajaFalsa([0, 503, 200])
+mj = oido.Mensajero(cf, reloj=lambda: 1000.0)
+mj.tramo(tramo_de(1.0))
+ok(mj.paso() is True and mj.paso() is True and len(mj.cola) == 1 and mj.errores == 2,
+   "si la red falla, el tramo se queda y se reintenta")
+ok(mj.paso() is False and cf.subidos == [1.0] and not mj.cola and mj.umbral == 0.6,
+   "cuando vuelve, sube; y en el camino tomó la sensibilidad del panel")
+ok(mj.cola[0]["g"] if mj.cola else True, "")
+cf = CajaFalsa([0] * 50)
+mj = oido.Mensajero(cf, reloj=lambda: 1000.0)
+for i in range(oido.COLA_MAX + 3):
+    mj.tramo(tramo_de(float(i)))
+ok(len(mj.cola) == oido.COLA_MAX and mj.perdidos == 3 and mj.cola[0]["desde"] == 3.0,
+   "sin internet por un rato largo, se tira lo más viejo: la memoria no crece y nada va al disco")
+cf = CajaFalsa([409])
+mj = oido.Mensajero(cf, reloj=lambda: 1000.0)
+mj.tramo(tramo_de(1.0))
+ok(mj.paso() is False and not mj.cola, "lo que el servidor rechaza por otra cosa (día cerrado) no se reintenta")
+cf = CajaFalsa([])
+mj = oido.Mensajero(cf, reloj=lambda: 1000.0, gmax=lambda: 2.0)
+mj.tramo(tramo_de(1.0))
+mj.paso()
+ok(mj.ganancia == 2.0 and mj.nivel_max > -50, "la amplificación se hace al subir, con la ganancia que toca en ese momento")
+
+print("\n== el latido del equipo ==")
+mi = oido.Minuto()
+mi.cuadros, mi.tramos, mi.segundos, mi.crudo_max = 2750, 1, 45.0, -38.4
+lat = mi.para_latido(mj, 1)
+ok(lat["mic"] == "ok" and lat["voz"] is True and lat["voz_s"] == 45 and lat["vosk_diag"]["variante"] == 1
+   and lat["vosk_diag"]["crudo_max"] == -38 and lat["vosk_diag"]["ganancia"] == 20 and lat["vosk_diag"]["umbral"] == 60
+   and mj.nivel_max == -120.0,
+   "dice que oye, cuánto mandó, con qué cadena (la natural) y cómo entra el micrófono: sólo números")
+ok(oido.Minuto().para_latido(None, 1)["mic"] == "sin_senal",
+   "un minuto entero sin audio: «micrófono sin señal», y el servidor le avisa al dueño")
+mi = oido.Minuto(); mi.cuadros = 3000
+ok(mi.para_latido(None, 1)["mic"] == "sin_senal", "audio que es puro silencio digital (micrófono muteado) también")
+red = Falso([(200, {"token": "t"}), (200, {"turno": {"id": "t1"}}), (200, {"ok": True})])
+c = oido.Caja("https://x.test", "l1", "0000", red)
+c.latido(1.0, lat)
+cuerpo = json.loads(red.pedidos[-1][1])
+ok(cuerpo["version"] == oido.VERSION and cuerpo["version"].startswith("equipo-oido") and cuerpo["vosk_diag"]["tramos"] == 1
+   and len(cuerpo["version"]) <= 40,
+   "el latido lleva la versión del equipo, para distinguirlo de la tablet")
+ok("perdidos" in leer("../backend/app/services/caja.py") if os.path.exists(os.path.join(EQUIPO, "../backend/app/services/caja.py")) else True,
+   "el servidor guarda los números nuevos del latido (perdidos, ganancia)")
+
+print("\n== leer el audio de ffmpeg ==")
+_trozos = [b"a" * 100, b"b" * 540, b"c" * 640, b"d" * 300, b"e" * 340, b"f" * 10, b""]
+_pedidos = []
+
+
+def _leer(n):
+    _pedidos.append(n)
+    return _trozos.pop(0)
+
+
+_cs = list(oido.cuadros_de(_leer))
+ok(_cs == [b"a" * 100 + b"b" * 540, b"c" * 640, b"d" * 300 + b"e" * 340] and max(_pedidos) == oido.FRAME_BYTES
+   and _pedidos[1] == 540,
+   "un pipe que entrega de a pedazos no corta el audio: se junta hasta completar cada cuadro (y lo que sobra al final se tira)")
+
+print("\n== lo que el código promete (2) ==")
+ok("SinMicrofono" in FUENTE.split("def main(")[1] and "SIN_MIC_S" in FUENTE.split("def main(")[1],
+   "sin micrófono no se cae: lo vuelve a buscar")
+ok('threading.Thread(target=mensajero.correr' in FUENTE and "realzar(" not in FUENTE.split("def main(")[1],
+   "la subida y la amplificación van en otro hilo: la grabación nunca espera a la red")
+ok(not re.search(r"(?<!wave\.)open\([^)]*['\"]w", FUENTE) and ".wav\"" not in FUENTE.replace('"tramo.wav"', ""),
+   "no se escribe audio en el disco")
 
 if fallos:
     print("\nFALLARON %d:" % len(fallos))

@@ -1,9 +1,14 @@
 # El equipo del local de Comercios por Autcala
 
-Lo que corre en una Raspberry Pi 5 con el AI HAT+ (Hailo-8) dentro de cada
-local: Frigate mira las cámaras que el local ya tiene y un programa chico,
-el puente, lleva la cuenta y la manda al servidor de Autcala. El dueño lo ve
-en su tablero.
+Lo que corre en una Raspberry Pi 5 dentro de cada local. Hace dos cosas, y
+se puede usar para una sola:
+
+- **El oído** (alcanza con la Pi y un micrófono USB): escucha el mostrador y
+  manda el audio al servidor de Autcala, que arma el resumen de cada ticket.
+  Es lo mismo que hace la tablet del mostrador. Ver «La Pi como oído».
+- **Las cámaras** (hace falta el AI HAT+, Hailo-8): Frigate mira las cámaras
+  que el local ya tiene y un programa chico, el puente, lleva la cuenta y la
+  manda al servidor. El dueño lo ve en su tablero.
 
 **De este equipo no sale ninguna imagen.** Frigate no graba ni saca fotos
 (el grabador del local ya graba) y el puente manda sólo cuentas, duraciones y
@@ -22,11 +27,11 @@ un local; la primera vez que arranque en una Pi puede haber algo para tocar.
 | Archivo | Qué es |
 |---|---|
 | `instalar.sh` | El instalador: deja todo andando, configura el equipo para un local y, si se pide, lo deja accesible desde afuera |
-| `docker-compose.yml` | Levanta las cuatro piezas: Frigate, el correo interno (MQTT), el puente y el oído |
+| `docker-compose.yml` | Levanta las cuatro piezas: Frigate, el correo interno (MQTT), el puente y el oído (sin el AI HAT+, sólo el oído) |
 | `frigate/config.ejemplo.yml` | La plantilla de Frigate: las cámaras, las zonas (puerta, salón, fila, caja) y las máscaras de la calle |
 | `puente/puente.py` | El puente: escucha a Frigate, cuenta, guarda en disco y manda |
 | `puente/test_puente.py` | Sus pruebas: `python -X utf8 test_puente.py` |
-| `oido/oido.py` | El oído: saca el audio de la cámara, detecta la voz y manda los tramos al oído del servidor (sólo con `OIDO=si`) |
+| `oido/oido.py` | El oído: el audio de un micrófono USB (o de la cámara), en tramos, al oído del servidor (sólo con `OIDO=si`) |
 | `oido/test_oido.py` | Sus pruebas: `python -X utf8 test_oido.py` |
 | `.env.example` | Lo que es de cada equipo (se copia a `.env`) |
 
@@ -179,45 +184,80 @@ si en el local hay una computadora con Tailscale que comparte su red
 con `./instalar.sh --configurar`. El lugar donde está el equipo y el local
 no pueden tener la misma numeración de red.
 
-## La cámara como oído
+## La Pi como oído
 
-El equipo también puede ser el **oído**: en vez del micrófono de la PC del
-local, el audio sale de la cámara. La Pi saca el audio del RTSP, detecta la
-voz y manda sólo los tramos con voz al **mismo oído del servidor** que hoy usa
-la caja, que los transcribe y arma los resúmenes de cada ticket.
+La Pi escucha el mostrador con un **micrófono USB** y manda el audio al
+**mismo oído del servidor** que usa la tablet: el servidor lo transcribe y
+arma el resumen de cada ticket. No hace falta el AI HAT+ ni las cámaras.
 
-Está **apagado por defecto** (para no chocar con el micrófono de la PC). Se
-prende poniendo `OIDO=si` en el `.env`:
+Escucha igual que la tablet con la cadena natural, que es la que mejor anduvo
+en el local: **de corrido**, en tramos de 45 segundos, sin filtros de ruido
+(se probaron y le sacaban a Whisper lo poco que oía), amplificado según la
+sensibilidad que el dueño elige en su panel (×24 en Máxima, ×12 en Alta, ×6
+en Normal). Si el micrófono ya viene fuerte, amplifica menos, para no
+aplastar todo contra el tope.
 
-```
-sed -i 's/^OIDO=.*/OIDO=si/' .env
-docker compose up -d
-```
+**El audio no se guarda en la Pi.** Vive en la memoria lo que tarda en
+subir. Si se corta internet, espera unos 3 minutos de audio y, pasado eso,
+tira lo más viejo.
 
-Para que mande de verdad hace falta, además, que el equipo tenga un local con
-el oído del servidor prendido (`./instalar.sh --configurar`) y `MANDAR=si`. El
-audio usa el canal `OIDO_RUTA` (en una Tapo, `/stream1`).
+### Instalarlo
 
-**Lo que hay que probar:** que una cámara en el techo, lejos del mostrador,
-capte la voz lo bastante bien como para transcribirla. Si no alcanza, va un
-micrófono cerca del mostrador y la cámara sigue con la vista. Con `OIDO=si` y
-`MANDAR=no`, el oído escribe en su registro lo que oyó sin mandar nada
-(`docker compose logs -f oido`), para probar sin ensuciar.
-
-**Limpiar el ruido (experimental).** Si el local es ruidoso y la voz llega
-tapada, se puede filtrar el ruido antes de transcribir poniendo `OIDO_DENOISE=si`
-en el `.env`:
+Con la Pi conectada a un monitor y un teclado, y el micrófono enchufado:
 
 ```
-sed -i 's/^OIDO_DENOISE=.*/OIDO_DENOISE=si/' .env
-docker compose up -d oido
+git clone https://github.com/tinchohan/autcala-equipo.git
+cd autcala-equipo
+./instalar.sh --oido
 ```
 
-Aplica un filtro de ffmpeg (corta el retumbe grave y un denoiser que sigue el
-ruido de fondo). También acepta un filtro de ffmpeg a medida (por ejemplo,
-sumarle `,dynaudnorm` para levantar una voz floja). Ayuda cuando la voz **está**
-pero tapada por ruido; no recupera una voz que llegó demasiado débil. Conviene
-probar con y sin, y comparar lo que transcribe.
+Pregunta el link de la caja del local y su PIN (como `--configurar`), busca
+el micrófono USB y pregunta si empieza a mandar. Con «n», la Pi escucha y
+sólo escribe en su registro cuánto oyó y a qué volumen, sin mandar nada:
+sirve para probar en la oficina. Después arma el oído y lo deja andando. La
+primera vez tarda unos minutos.
+
+Lo que va oyendo, cada 45 segundos:
+
+```
+docker compose logs -f oido
+```
+
+Ahí tiene que aparecer, con «n», algo como «oí un tramo de 45.0 s, a −38 dB».
+Si el número queda cerca de −120, el micrófono no está mandando sonido. Para
+pasar a mandar, correr de nuevo `./instalar.sh --oido` y contestar «s».
+
+En el local va sin monitor: corriente, cable de red y el micrófono. Al
+prender arranca sola. Si se desenchufa el micrófono, lo vuelve a buscar cada
+30 segundos; si en un minuto entero no llega audio, el servidor le avisa al
+dueño que el micrófono no tiene señal, igual que con la tablet.
+
+### Cosas del oído
+
+- **Una sola cosa escuchando.** Si la tablet del mostrador sigue escuchando,
+  los tramos de las dos se mezclan en el mismo día. Mientras se prueba la Pi,
+  la tablet va apagada. (Para que escuchen varias a la vez está el puesto,
+  `OIDO_PUESTO`, que todavía no se usa.)
+- **El micrófono.** Lo que más pesa es la distancia a la boca del que atiende:
+  cuanto más cerca de la caja, mejor. Uno omnidireccional de mesa (los de
+  conferencia) toma a los dos lados del mostrador.
+- **Varios micrófonos USB.** Toma el primero. Para elegir otro, en el `.env`:
+  `OIDO_MIC=plughw:CARD=<nombre>,DEV=0` (la lista: `arecord -l`).
+- **El volumen.** La amplificación sigue a la sensibilidad del panel, y la Pi
+  la vuelve a preguntar cada 5 minutos. Para fijarla a mano: `OIDO_GANANCIA=`
+  con un número en el `.env`, y `docker compose up -d oido`.
+- **Desde afuera** se ve cómo anda, sin entrar a la Pi: cada latido le cuenta
+  al servidor, en números, cuánto audio mandó, a qué nivel entra el
+  micrófono y cuánto amplificó.
+
+### Con la cámara, en vez de un micrófono
+
+El oído también puede sacar el audio de una cámara con RTSP (`OIDO_FUENTE=rtsp`,
+el canal `OIDO_RUTA`, la cámara de `./instalar.sh --camara`). Ahí, de fábrica,
+manda sólo lo que suena a voz (`OIDO_MODO=voz`). Una cámara en el techo, lejos
+del mostrador, difícilmente capte la voz lo bastante bien. Hay un filtro de
+ruido de ffmpeg (`OIDO_DENOISE=si`), apagado: en el local, limpiar el audio
+antes de Whisper empeoró todo.
 
 ## Qué manda
 
@@ -266,8 +306,7 @@ Cómo se cuenta cada cosa está explicado al principio de `puente/puente.py`.
   vuelve (hasta 7 días de atraso).
 - **Un corte de luz.** Al volver arranca solo y sigue.
 - **Actualizar.** `git pull && ./instalar.sh`.
-- **El audio** de la cámara pasa por acá sólo con `OIDO=si` (ver «La
-  cámara como oído»); apagado por defecto, para no chocar con el micrófono
-  de la PC del local.
+- **El audio** pasa por acá sólo con `OIDO=si` (ver «La Pi como oído»), y
+  no se guarda: va al servidor y se borra.
 
 Todos los derechos reservados.
