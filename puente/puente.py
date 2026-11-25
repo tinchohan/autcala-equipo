@@ -260,9 +260,7 @@ class Diario:
             p["caja_s"] += max(0.0, t - p["caja_desde"])
             p["caja_desde"] = None
             if p["caja_s"] >= CAJA_MIN_S:
-                self.disco.guardar("eventos", f"caja-{pid}", {
-                    "clave": f"caja-{pid}"[:80], "tipo": "en_caja", "camara": self._numero(p["camara"]),
-                    "desde": hora_de(p["caja_primera"]), "segundos": int(p["caja_s"])}, t)
+                self._aviso_caja(pid, p, p["caja_s"], t)
         self._contar_caja(p, t)
         if cerrado(t, self.abre, self.cierra) and t - p["inicio"] >= FUERA_MIN_S:
             p["fuera"] = True
@@ -274,6 +272,12 @@ class Diario:
         if fin:
             self.personas.pop(pid, None)
         self._presentes(t)
+
+    def _aviso_caja(self, pid: str, p: dict, segundos: float, t: float) -> None:
+        """El aviso de alguien parado en la caja: desde cuándo y cuánto lleva."""
+        self.disco.guardar("eventos", f"caja-{pid}", {
+            "clave": f"caja-{pid}"[:80], "tipo": "en_caja", "camara": self._numero(p["camara"]),
+            "desde": hora_de(p["caja_primera"]), "segundos": int(segundos)}, t)
 
     def _contar_caja(self, p: dict, t: float) -> None:
         """Cliente en la caja: la persona cuenta una vez cuando suma A_CAJA_MIN_S
@@ -302,8 +306,14 @@ class Diario:
     def _minuto(self, ahora: float) -> None:
         for pid in [k for k, p in self.personas.items() if ahora - p["visto"] > OLVIDO_S]:
             self.personas.pop(pid, None)
-        for p in self.personas.values():      # quien sigue quieto pagando no manda avisos: se mira acá
+        for pid, p in self.personas.items():  # quien sigue quieto pagando no manda avisos: se mira acá
             self._contar_caja(p, ahora)
+            if p["caja_desde"] is not None:
+                # Sigue en la caja: su aviso va saliendo con lo que lleva, sin esperar a que se vaya.
+                # El servidor lo cruza con el ticket apenas sale, y el cliente todavía puede estar ahí.
+                llevado = p["caja_s"] + max(0.0, ahora - p["caja_desde"])
+                if llevado >= CAJA_MIN_S:
+                    self._aviso_caja(pid, p, llevado, ahora)
         clave, tr = self._tramo(ahora)
         tr["camaras"] = sum(1 for viva in self.camaras.values() if viva)
         self.disco.guardar("tramos", clave, tr, ahora)

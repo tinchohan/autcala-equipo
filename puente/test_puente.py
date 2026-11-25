@@ -126,6 +126,16 @@ ok(d.disco.leer("eventos", "caja-a") == {"clave": "caja-a", "tipo": "en_caja", "
    and d.disco.leer("eventos", "caja-c") is None and d.disco.leer("eventos", "caja-e")["segundos"] == 60,
    "alguien en la caja: desde cuándo y cuánto estuvo en total, si fueron 8 segundos o más")
 ok(tramo(d, T0)["esperas"] == 2, "volver a la caja no cuenta otra espera")
+dg = nuevo()
+dg.aviso(aviso("g", T0, ["caja"], "new"), T0)
+dg.minuto(T0 + 5)
+sin_aviso = dg.disco.leer("eventos", "caja-g") is None
+dg.minuto(T0 + 40)
+a_medias = dict(dg.disco.leer("eventos", "caja-g") or {})
+dg.aviso(aviso("g", T0 + 70, ["salon"]), T0 + 70)
+ok(sin_aviso and a_medias.get("segundos") == 40 and a_medias.get("desde") == dg.disco.leer("eventos", "caja-g")["desde"]
+   and dg.disco.leer("eventos", "caja-g")["segundos"] == 70,
+   "quien sigue parado en la caja ya tiene su aviso al minuto, con lo que lleva; cuando se va, queda el total")
 ok(puente.A_CAJA_MIN_S == 30 and tramo(d, T0)["a_caja"] == 2,
    "cliente en la caja es quien suma 30 segundos ahí: a (30 s) y e (60 s); c estuvo 4 s, pasó de largo: no")
 d.minuto(T0 + 455)
