@@ -530,7 +530,10 @@ def _entrada() -> list:
             raise SystemExit("Falta OIDO_MIC: el nombre del micrófono. Listalos con:\n"
                              "  ffmpeg -hide_banner -list_devices true -f dshow -i dummy")
         return ["-f", "dshow", "-i", "audio=" + mic]
-    return ["-rtsp_transport", "tcp", "-i", url_rtsp()]
+    # -timeout: si la conexión RTSP se cuelga (el Wi-Fi de la cámara es
+    # inestable), ffmpeg corta a los 10 s y main() lo vuelve a arrancar, en vez
+    # de quedar colgado para siempre.
+    return ["-rtsp_transport", "tcp", "-timeout", "10000000", "-i", url_rtsp()]
 
 
 # El filtro de ffmpeg que limpia el ruido. Con OIDO_DENOISE vacío o "no" no
