@@ -52,7 +52,7 @@ from datetime import datetime, timezone
 
 log = logging.getLogger("oido")
 
-VERSION = "equipo-oido-2026-11-24"
+VERSION = "equipo-oido-2026-11-26"
 
 # El formato que pide el servidor. Un tramo que no coincida lo descarta.
 RATE = 16000
@@ -146,6 +146,58 @@ def realzar(pcm: bytes, gmax: float) -> tuple:
             y = -a if y < 0 else a
         salida[i] = int(y)
     return salida.tobytes(), round(g, 2)
+
+
+# ── La cadena del navegador (OIDO_CADENA) ────────────────────────────────────
+#
+# El mejor día del oído fue el 2026-11-12: el micrófono lo abría la web de la
+# caja en el navegador de la PC, que antes de entregar el audio le pasa su
+# propia limpieza (filtro de ruido y ganancia automática). Esa limpieza es una
+# biblioteca abierta (la de WebRTC), y acá se le aplica la misma al audio de la
+# cámara, para medir cuánto de aquel día era la limpieza y cuánto que el
+# micrófono estaba al lado del cajero.
+#   OIDO_CADENA=natural    lo de siempre: el audio como viene, amplificado (de fábrica)
+#   OIDO_CADENA=navegador  siempre con la limpieza del navegador
+#   OIDO_CADENA=turnos     media hora cada una, por el reloj: así se comparan
+#                          contra los tickets, como se hizo con la tablet (124)
+# La cancelación de eco del navegador no se emula: no hay parlante que cancelar.
+NAVEGADOR_RUIDO = 3                         # el filtro de ruido en «alto», como lo pone Chrome (0 a 4)
+NAVEGADOR_NIVEL = 3                         # la ganancia automática apunta a −3 dB del tope (0 la apaga)
+BLOQUE_S = 30 * 60
+
+
+def cadena() -> str:
+    v = os.environ.get("OIDO_CADENA", "").strip().lower()
+    return v if v in ("navegador", "turnos") else "natural"
+
+
+def turno_de(t: float) -> int:
+    """0 o 1: qué media hora es. La misma cuenta que el servidor (kiosco.py,
+    `turno_de`); se le suma el día para que una hora no caiga siempre igual."""
+    s = int(t)
+    return (s // BLOQUE_S + s // 86400) % 2
+
+
+def toca_navegador(cad: str, t: float) -> bool:
+    """Si en ese momento se escucha con la limpieza del navegador (en `turnos`, el turno 1)."""
+    return cad == "navegador" or (cad == "turnos" and turno_de(t) == 1)
+
+
+class Navegador:
+    """La limpieza del navegador, cuadro por cuadro. La biblioteca trabaja de a
+    10 ms y los cuadros son de 20: se parten en dos. `procesar10` se puede
+    reemplazar en las pruebas, que no tienen la biblioteca."""
+
+    def __init__(self, procesar10=None):
+        if procesar10 is None:
+            from webrtc_noise_gain import AudioProcessor   # sólo hace falta acá
+            ap = AudioProcessor(NAVEGADOR_NIVEL, NAVEGADOR_RUIDO)
+            procesar10 = lambda b: ap.Process10ms(b).audio  # noqa: E731
+        self.procesar10 = procesar10
+
+    def cuadro(self, pcm: bytes) -> bytes:
+        mitad = len(pcm) // 2
+        return bytes(self.procesar10(pcm[:mitad])) + bytes(self.procesar10(pcm[mitad:]))
 
 
 # ── La cuenta: de los cuadros de audio a los tramos ──────────────────────────
@@ -612,7 +664,8 @@ class Minuto:
             "vosk_diag": {"cuadros": self.cuadros, "tramos": self.tramos, "segundos": round(self.segundos),
                           "errores": errores, "perdidos": perdidos, "nivel_max_db": round(nivel),
                           "crudo_max": round(self.crudo_max), "umbral": round(umbral * 100),
-                          "variante": variante, "ns": 0, "ec": 0, "agc": 0,
+                          # 1 = la natural, 2 = con la limpieza del navegador (filtro de ruido y ganancia).
+                          "variante": variante, "ns": int(variante == 2), "ec": 0, "agc": int(variante == 2),
                           "ganancia": round(ganancia * 10)},   # la del último tramo, por diez
         }
 
@@ -657,15 +710,26 @@ def main() -> None:
              nombres.get(f, f), "de corrido en tramos de 45 s" if corrido else "sólo lo que suena a voz")
     if _filtro_denoise():
         log.info("limpieza de ruido activada (OIDO_DENOISE): %s", _filtro_denoise())
+    cad = cadena()
+    nav = None
+    if cad != "natural":
+        try:
+            nav = Navegador()
+            log.info("cadena de audio: %s", "la limpieza del navegador, siempre" if cad == "navegador"
+                     else "media hora natural y media hora con la limpieza del navegador")
+        except Exception as e:  # noqa: BLE001
+            log.error("no pude prender la limpieza del navegador (%s): sigo con la natural", type(e).__name__)
+            cad = "natural"
 
     minuto = Minuto()
     prox_latido = 0.0
+    limpia = False                          # si ahora se escucha con la limpieza del navegador
 
     def latir(ahora: float) -> None:
         nonlocal minuto, prox_latido
         if ahora < prox_latido:
             return
-        mensajero.latir(minuto.para_latido(mensajero, 1 if corrido else 0))
+        mensajero.latir(minuto.para_latido(mensajero, 2 if limpia else 1 if corrido else 0))
         minuto = Minuto()
         prox_latido = ahora + LATIDO_S
 
@@ -679,6 +743,19 @@ def main() -> None:
                 db = nivel_db(cuadro)
                 if db > minuto.crudo_max:
                     minuto.crudo_max = db
+                if nav is not None:
+                    # Se limpia siempre, también cuando no toca usarlo: así el filtro llega
+                    # a su media hora ya acostumbrado al ruido del local.
+                    limpio = nav.cuadro(cuadro)
+                    toca = toca_navegador(cad, ahora)
+                    if toca != limpia:
+                        # Al cambiar de cadena se cierra el tramo: ninguno mezcla las dos.
+                        limpia = toca
+                        resto = seg.cortar()
+                        if resto:
+                            mensajero.tramo(resto)
+                    if limpia:
+                        cuadro = limpio
                 # El reloj del cuadro: ahora, menos lo que dura (llega apenas termina).
                 tramo = seg.cuadro(cuadro, vad.is_speech(cuadro, RATE) if vad else True, ahora - FRAME_MS / 1000.0)
                 if tramo:

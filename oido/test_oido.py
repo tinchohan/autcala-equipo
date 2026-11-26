@@ -361,6 +361,32 @@ ok(cuerpo["version"] == oido.VERSION and cuerpo["version"].startswith("equipo-oi
 ok("perdidos" in leer("../backend/app/services/caja.py") if os.path.exists(os.path.join(EQUIPO, "../backend/app/services/caja.py")) else True,
    "el servidor guarda los números nuevos del latido (perdidos, ganancia)")
 
+print("\n== la cadena del navegador ==")
+os.environ.pop("OIDO_CADENA", None)
+ok(oido.cadena() == "natural", "sin pedirlo, la cadena es la natural: nada cambia")
+os.environ["OIDO_CADENA"] = "Turnos "
+ok(oido.cadena() == "turnos", "OIDO_CADENA=turnos: media hora cada una")
+os.environ["OIDO_CADENA"] = "cualquiera"
+ok(oido.cadena() == "natural", "algo que no se entiende es la natural")
+os.environ.pop("OIDO_CADENA", None)
+ok([oido.turno_de(t) for t in (0, 1799, 1800, 3600, 86400, 86400 + 1800)] == [0, 0, 1, 0, 1, 0],
+   "el turno cambia cada media hora y se corre con el día, como en el servidor")
+ok(oido.toca_navegador("navegador", 0) and not oido.toca_navegador("natural", 1800)
+   and oido.toca_navegador("turnos", 1800) and not oido.toca_navegador("turnos", 0),
+   "en turnos, la limpieza del navegador va en el turno 1")
+_dieces = []
+nv = oido.Navegador(lambda b: (_dieces.append(len(b)), b[::-1])[1])
+_c = bytes(range(256)) * 2 + bytes(128)
+ok(len(nv.cuadro(_c)) == oido.FRAME_BYTES and _dieces == [320, 320] and nv.cuadro(_c)[:320] == _c[:320][::-1],
+   "la limpieza trabaja de a 10 ms: cada cuadro de 20 se parte en dos y vuelve del mismo largo")
+lat2 = oido.Minuto().para_latido(None, 2)["vosk_diag"]
+ok(lat2["variante"] == 2 and lat2["ns"] == 1 and lat2["agc"] == 1 and lat2["ec"] == 0
+   and lat["vosk_diag"]["ns"] == 0 and lat["vosk_diag"]["agc"] == 0,
+   "el latido dice con qué cadena se escuchó: 2 = con el filtro de ruido y la ganancia del navegador")
+_main = FUENTE.split("def main(")[1]
+ok("sigo con la natural" in _main and "seg.cortar()" in _main.split("toca != limpia")[1][:300],
+   "si la limpieza no se puede prender, sigue con la natural; y al cambiar de cadena se cierra el tramo")
+
 print("\n== leer el audio de ffmpeg ==")
 _trozos = [b"a" * 100, b"b" * 540, b"c" * 640, b"d" * 300, b"e" * 340, b"f" * 10, b""]
 _pedidos = []
