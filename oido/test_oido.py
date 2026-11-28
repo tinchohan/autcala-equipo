@@ -99,6 +99,23 @@ os.environ["OIDO_SILENCIO_MS"] = "99999"
 ok(oido._ms("OIDO_SILENCIO_MS", 700, 200, 10000) == 10000, "y tienen tope")
 del os.environ["OIDO_SILENCIO_MS"], os.environ["OIDO_PREROLL_MS"]
 
+print("\n== la puerta de nivel ==")
+p = oido.Piso()
+ok(all(p.cuadro(-40.0) == -120.0 for _ in range(oido.PISO_MIN_CUADROS - 1)),
+   "hasta juntar unos segundos no hay piso: la puerta deja pasar todo")
+for _ in range(oido.PISO_CADA):
+    p.cuadro(-40.0)
+ok(p.piso == -40.0, "con unos segundos de ruido parejo, ése es el piso")
+for i in range(oido.PISO_CUADROS):
+    p.cuadro(-10.0 if i % 5 == 0 else -40.0)
+ok(p.piso == -40.0, "la voz que aparece cada tanto no sube el piso: es el nivel que supera el 90 % de los cuadros")
+for _ in range(oido.PISO_CUADROS):
+    p.cuadro(-30.0)
+ok(p.piso == -30.0 and len(p.niveles) == oido.PISO_CUADROS, "si el ruido de fondo cambia, el piso lo sigue: mira sólo el último minuto")
+ok(oido.pasa_la_puerta(-25.0, -40.0, 14) and not oido.pasa_la_puerta(-30.0, -40.0, 14)
+   and oido.pasa_la_puerta(-39.0, -40.0, None) and oido.pasa_la_puerta(-100.0, -120.0, 14),
+   "pasa lo que suena 14 dB por encima del piso; sin puerta, o sin piso todavía, pasa todo")
+
 print("\n== el tope de un tramo ==")
 tramos, seg, _ = correr([(True, oido.TRAMO_MAX_FRAMES + 50)])
 ok(len(tramos) == 1 and len(tramos[0]["pcm"]) // oido.FRAME_BYTES == oido.TRAMO_MAX_FRAMES

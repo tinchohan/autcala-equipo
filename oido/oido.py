@@ -26,6 +26,13 @@ frases no lo corta) y OIDO_PREROLL_MS, cuánto se guarda de antes de la primera
 voz (de fábrica 240). Lo de «corrido es mucho mejor» se midió con Whisper, que
 necesitaba el contexto de corrido.
 
+LA PUERTA DE NIVEL (2026-11-28). Medido en el local: el detector de voz solo
+deja pasar un tercio de los cuadros, pero con el margen eso termina siendo el
+80 % del audio, porque también toma por voz la música y las charlas lejanas.
+OIDO_PUERTA_DB pide además que el cuadro suene esa cantidad de decibeles por
+encima del ruido de fondo del último minuto (`Piso`): con 14, queda cerca del
+40 % del audio, que es la voz que está cerca del mostrador. Vacío = sin puerta.
+
 Como en la tablet, el audio se amplifica según la sensibilidad que el dueño
 elige en su panel (Máxima, Alta, Normal), con un tope para que una voz pegada
 al micrófono no sature. El equipo la vuelve a preguntar cada cinco minutos.
@@ -208,6 +215,38 @@ class Navegador:
     def cuadro(self, pcm: bytes) -> bytes:
         mitad = len(pcm) // 2
         return bytes(self.procesar10(pcm[:mitad])) + bytes(self.procesar10(pcm[mitad:]))
+
+
+# ── El ruido de fondo, para la puerta de nivel ───────────────────────────────
+
+PISO_CUADROS = 3000                         # un minuto de cuadros de 20 ms
+PISO_CADA = 50                              # el piso se vuelve a calcular una vez por segundo
+PISO_MIN_CUADROS = 250                      # con menos de 5 s todavía no se sabe: pasa todo
+
+
+class Piso:
+    """El ruido de fondo del último minuto: el nivel que supera el 90 % de los
+    cuadros. Se le pasa el nivel (dB) de cada cuadro y devuelve el piso; hasta
+    juntar unos segundos devuelve −120, o sea que la puerta deja pasar todo."""
+
+    def __init__(self):
+        self.niveles: deque = deque(maxlen=PISO_CUADROS)
+        self.piso = -120.0
+        self.desde_calculo = 0
+
+    def cuadro(self, db: float) -> float:
+        self.niveles.append(db)
+        self.desde_calculo += 1
+        if self.desde_calculo >= PISO_CADA and len(self.niveles) >= PISO_MIN_CUADROS:
+            self.desde_calculo = 0
+            orden = sorted(self.niveles)
+            self.piso = orden[len(orden) // 10]
+        return self.piso
+
+
+def pasa_la_puerta(db: float, piso: float, puerta_db: float | None) -> bool:
+    """Si un cuadro suena lo bastante por encima del ruido de fondo. Sin puerta, siempre."""
+    return puerta_db is None or db >= piso + puerta_db
 
 
 # ── La cuenta: de los cuadros de audio a los tramos ──────────────────────────
@@ -727,10 +766,14 @@ def main() -> None:
         vad = webrtcvad.Vad(int(os.environ.get("OIDO_VAD", "2")))
     silencio_ms = _ms("OIDO_SILENCIO_MS", SILENCIO_FIN_MS, 200, 10000)
     pre_ms = _ms("OIDO_PREROLL_MS", PRE_ROLL_MS, 0, 3000)
+    # La puerta de nivel: cuántos dB sobre el ruido de fondo tiene que sonar un cuadro para contar como voz.
+    puerta_db = float(_ms("OIDO_PUERTA_DB", 0, 0, 40)) or None
+    piso = Piso()
     nombres = {"usb": "un micrófono USB", "mic": "el micrófono de la PC", "rtsp": "la cámara"}
     log.info("oído %s, por %s, %s", "de prueba: NO manda nada" if solo else "del local " + os.environ["LOCAL_ID"],
              nombres.get(f, f), "de corrido en tramos de 45 s" if corrido
-             else f"sólo lo que suena a voz (un silencio de {silencio_ms} ms cierra el tramo; {pre_ms} ms de antes)")
+             else f"sólo lo que suena a voz (un silencio de {silencio_ms} ms cierra el tramo; {pre_ms} ms de antes; "
+                  + (f"puerta de {puerta_db:g} dB sobre el ruido de fondo)" if puerta_db else "sin puerta de nivel)"))
     if _filtro_denoise():
         log.info("limpieza de ruido activada (OIDO_DENOISE): %s", _filtro_denoise())
     cad = cadena()
@@ -780,7 +823,14 @@ def main() -> None:
                     if limpia:
                         cuadro = limpio
                 # El reloj del cuadro: ahora, menos lo que dura (llega apenas termina).
-                tramo = seg.cuadro(cuadro, vad.is_speech(cuadro, RATE) if vad else True, ahora - FRAME_MS / 1000.0)
+                es_voz = True
+                if vad:
+                    es_voz = vad.is_speech(cuadro, RATE)
+                    if puerta_db:
+                        # El nivel es el del cuadro como va a salir (ya limpio); el piso se sigue siempre.
+                        nivel = nivel_db(cuadro)
+                        es_voz = pasa_la_puerta(nivel, piso.cuadro(nivel), puerta_db) and es_voz
+                tramo = seg.cuadro(cuadro, es_voz, ahora - FRAME_MS / 1000.0)
                 if tramo:
                     minuto.tramos += 1
                     minuto.segundos += tramo["dur"]
