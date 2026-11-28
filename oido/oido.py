@@ -16,6 +16,16 @@ Dos maneras de cortar el audio en tramos (OIDO_MODO):
   - «voz»: sólo los tramos con voz según webrtcvad (la primera versión, para
     la cámara).
 
+SÓLO LOS RATOS CON VOZ, CON MARGEN (2026-11-28). Desde que lo que se oye lo
+escucha un modelo que recibe audio y cobra por segundo, mandar los ratos en
+que no habla nadie es pagar por nada: en el local, tres cuartos del tiempo no
+hay voz. El modo «voz» vuelve a servir, pero con más aire que el de la primera
+versión, para no cortar frases ni partir una charla: OIDO_SILENCIO_MS es
+cuánto silencio cierra un tramo (de fábrica 700; con 2000 una pausa entre dos
+frases no lo corta) y OIDO_PREROLL_MS, cuánto se guarda de antes de la primera
+voz (de fábrica 240). Lo de «corrido es mucho mejor» se midió con Whisper, que
+necesitaba el contexto de corrido.
+
 Como en la tablet, el audio se amplifica según la sensibilidad que el dueño
 elige en su panel (Máxima, Alta, Normal), con un tope para que una voz pegada
 al micrófono no sature. El equipo la vuelve a preguntar cada cinco minutos.
@@ -52,7 +62,7 @@ from datetime import datetime, timezone
 
 log = logging.getLogger("oido")
 
-VERSION = "equipo-oido-2026-11-26"
+VERSION = "equipo-oido-2026-11-28"
 
 # El formato que pide el servidor. Un tramo que no coincida lo descarta.
 RATE = 16000
@@ -207,13 +217,15 @@ class Segmentador:
     es voz o no (afuera lo decide webrtcvad) y la hora de reloj del cuadro.
     Devuelve un tramo cuando se cierra (por silencio o por llegar al tope)."""
 
-    def __init__(self):
+    def __init__(self, silencio_ms: int = SILENCIO_FIN_MS, pre_ms: int = PRE_ROLL_MS):
         self.en_voz = False
         self.buffer: list[bytes] = []
         self.pre: list[bytes] = []          # los últimos cuadros, para el pre-roll
         self.voz_seguida = 0
         self.silencio = 0
         self.desde = 0.0
+        self.silencio_fin = max(1, int(silencio_ms) // FRAME_MS)     # cuántos cuadros de silencio cierran el tramo
+        self.pre_roll = max(0, int(pre_ms) // FRAME_MS)              # cuántos se guardan de antes de la primera voz
 
     def _cerrar(self) -> dict:
         tramo = {"pcm": b"".join(self.buffer), "dur": round(len(self.buffer) * FRAME_MS / 1000.0, 2),
@@ -225,18 +237,18 @@ class Segmentador:
         """Un cuadro de FRAME_BYTES. Devuelve un tramo si se acaba de cerrar."""
         if not self.en_voz:
             self.pre.append(pcm)
-            if len(self.pre) > PRE_ROLL_FRAMES:
+            if len(self.pre) > max(self.pre_roll, INICIO_VOZ_FRAMES):
                 self.pre.pop(0)
             self.voz_seguida = self.voz_seguida + 1 if es_voz else 0
             if self.voz_seguida >= INICIO_VOZ_FRAMES:
                 self.en_voz, self.silencio = True, 0
-                self.buffer = list(self.pre)
+                self.buffer = list(self.pre[-self.pre_roll:]) if self.pre_roll else list(self.pre[-INICIO_VOZ_FRAMES:])
                 self.desde = t - len(self.buffer) * FRAME_MS / 1000.0
                 self.pre = []
             return None
         self.buffer.append(pcm)
         self.silencio = 0 if es_voz else self.silencio + 1
-        if self.silencio >= SILENCIO_FIN_FRAMES or len(self.buffer) >= TRAMO_MAX_FRAMES:
+        if self.silencio >= self.silencio_fin or len(self.buffer) >= TRAMO_MAX_FRAMES:
             return self._cerrar()
         return None
 
@@ -670,6 +682,14 @@ class Minuto:
         }
 
 
+def _ms(nombre: str, de_fabrica: int, minimo: int, maximo: int) -> int:
+    """Un tiempo en milisegundos leído del .env, entre sus topes. Vacío o roto = el de fábrica."""
+    try:
+        return max(minimo, min(maximo, int(float(os.environ.get(nombre, "").strip()))))
+    except ValueError:
+        return de_fabrica
+
+
 def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     # El oído es una decisión aparte (OIDO=si): si está apagado, no toca el audio.
@@ -705,9 +725,12 @@ def main() -> None:
     if not corrido:
         import webrtcvad   # sólo hace falta acá: las pruebas no lo usan
         vad = webrtcvad.Vad(int(os.environ.get("OIDO_VAD", "2")))
+    silencio_ms = _ms("OIDO_SILENCIO_MS", SILENCIO_FIN_MS, 200, 10000)
+    pre_ms = _ms("OIDO_PREROLL_MS", PRE_ROLL_MS, 0, 3000)
     nombres = {"usb": "un micrófono USB", "mic": "el micrófono de la PC", "rtsp": "la cámara"}
     log.info("oído %s, por %s, %s", "de prueba: NO manda nada" if solo else "del local " + os.environ["LOCAL_ID"],
-             nombres.get(f, f), "de corrido en tramos de 45 s" if corrido else "sólo lo que suena a voz")
+             nombres.get(f, f), "de corrido en tramos de 45 s" if corrido
+             else f"sólo lo que suena a voz (un silencio de {silencio_ms} ms cierra el tramo; {pre_ms} ms de antes)")
     if _filtro_denoise():
         log.info("limpieza de ruido activada (OIDO_DENOISE): %s", _filtro_denoise())
     cad = cadena()
@@ -734,7 +757,7 @@ def main() -> None:
         prox_latido = ahora + LATIDO_S
 
     while True:
-        seg = Corrido() if corrido else Segmentador()
+        seg = Corrido() if corrido else Segmentador(silencio_ms, pre_ms)
         espera = REINTENTO_S
         try:
             for cuadro in capturar():

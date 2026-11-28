@@ -254,7 +254,8 @@ dueño que el micrófono no tiene señal, igual que con la tablet.
 
 El oído también puede sacar el audio de una cámara con RTSP (`OIDO_FUENTE=rtsp`,
 el canal `OIDO_RUTA`, la cámara de `./instalar.sh --camara`). Ahí, de fábrica,
-manda sólo lo que suena a voz (`OIDO_MODO=voz`). Una cámara en el techo, lejos
+manda sólo lo que suena a voz (`OIDO_MODO=voz`; con `OIDO_SILENCIO_MS=2000` y
+`OIDO_PREROLL_MS=500` una pausa entre dos frases no corta la charla). Una cámara en el techo, lejos
 del mostrador, difícilmente capte la voz lo bastante bien. Hay un filtro de
 ruido de ffmpeg (`OIDO_DENOISE=si`), apagado: en el local, limpiar el audio
 antes de Whisper empeoró todo.

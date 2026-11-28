@@ -84,6 +84,21 @@ ok(corte is not None and len(corte["pcm"]) // oido.FRAME_BYTES == oido.PRE_ROLL_
    and seg.cortar() is None,
    "al apagar (o cambiar el día) se cierra lo que había en curso, una sola vez")
 
+# Con margen (2026-11-28): un silencio más largo para cerrar y más aire antes de la primera voz.
+tramos, seg, _ = correr([(False, 60), (True, 50), (False, 60), (True, 50), (False, 100)], oido.Segmentador(2000, 500))
+ok(len(tramos) == 1 and len(tramos[0]["pcm"]) // oido.FRAME_BYTES == 25 + (50 - oido.INICIO_VOZ_FRAMES) + 60 + 50 + 100
+   and abs(tramos[0]["desde"] - (60 + oido.INICIO_VOZ_FRAMES - 1 - 25) * oido.FRAME_MS / 1000.0) < 0.001,
+   "con 2000 ms de silencio una pausa de 1,2 s entre dos frases no corta el tramo, y con 500 ms de antes no se pierde el arranque")
+tramos, _, _ = correr([(False, 60), (True, 50), (False, 60), (True, 50), (False, 100)])
+ok(len(tramos) == 2, "de fábrica (700 ms) esa misma pausa lo corta en dos, como siempre")
+os.environ["OIDO_SILENCIO_MS"], os.environ["OIDO_PREROLL_MS"] = "2000", "cualquiera"
+ok(oido._ms("OIDO_SILENCIO_MS", 700, 200, 10000) == 2000 and oido._ms("OIDO_PREROLL_MS", 240, 0, 3000) == 240
+   and oido._ms("OIDO_NO_ESTA", 700, 200, 10000) == 700,
+   "los tiempos salen del .env; vacío o roto, los de fábrica")
+os.environ["OIDO_SILENCIO_MS"] = "99999"
+ok(oido._ms("OIDO_SILENCIO_MS", 700, 200, 10000) == 10000, "y tienen tope")
+del os.environ["OIDO_SILENCIO_MS"], os.environ["OIDO_PREROLL_MS"]
+
 print("\n== el tope de un tramo ==")
 tramos, seg, _ = correr([(True, oido.TRAMO_MAX_FRAMES + 50)])
 ok(len(tramos) == 1 and len(tramos[0]["pcm"]) // oido.FRAME_BYTES == oido.TRAMO_MAX_FRAMES
